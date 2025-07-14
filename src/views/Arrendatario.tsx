@@ -188,7 +188,7 @@ const HouseDetailsModal: React.FC<HouseDetailsModalProps> = ({ casa, isOpen, onC
           <div className="flex flex-col sm:flex-row gap-3 justify-end">
             <button
               onClick={onClose}
-              className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 rounded-lg transition-colors"
+              className="px-6 py-3 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 rounded-lg transition-colors cursor-pointer"
             >
               Cerrar
             </button>
@@ -200,7 +200,7 @@ const HouseDetailsModal: React.FC<HouseDetailsModalProps> = ({ casa, isOpen, onC
                 }
               }}
               disabled={!casa.geometry}
-              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 disabled:from-gray-500 disabled:to-gray-600 text-white rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 disabled:from-gray-500 disabled:to-gray-600 text-white rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <MapPin className="w-4 h-4 inline mr-2" />
               Ver en Mapa
@@ -509,7 +509,7 @@ export default function AIChat() {
                 <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-blue-500/20">
                   <div className="flex items-center space-x-2">
                     <Loader2 className="w-4 h-4 text-blue-300 animate-spin" />
-                    <span className="text-sm text-blue-300">Buscando casas...</span>
+                    <span className="text-sm text-blue-300">Buscando...</span>
                   </div>
                 </div>
               </div>
