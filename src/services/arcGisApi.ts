@@ -33,6 +33,8 @@ export interface SearchCriteria {
   hospitalFoot?: number;
   escuelasCar?: number;
   escuelasFoot?: number;
+  nearHospital?: boolean;
+  nearSchool?: boolean;
 }
 
 export interface CasaMatch {
@@ -124,7 +126,7 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
       }
     }
     
-    // Proximidad a servicios (peso 6)
+    // Proximidad a servicios específicos (peso 6)
     if (criteria.hospitalCar !== undefined) {
       if (casa.Hospital_Car <= criteria.hospitalCar) {
         score += 6;
@@ -145,6 +147,18 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
       }
     }
     
+    // NUEVA FUNCIONALIDAD: Búsqueda general cerca de hospital
+    if (criteria.nearHospital) {
+      // Consideramos "cerca" si está a menos de 15 minutos en carro
+      if (casa.Hospital_Car <= 15) {
+        score += 8;
+        matches.push(`cerca del hospital (${casa.Hospital_Car} min en carro)`);
+      } else if (casa.Hospital_Car <= 25) {
+        score += 4;
+        partialMatches.push(`relativamente cerca del hospital (${casa.Hospital_Car} min en carro)`);
+      }
+    }
+    
     if (criteria.escuelasCar !== undefined) {
       if (casa.Escuelas_Car <= criteria.escuelasCar) {
         score += 6;
@@ -162,6 +176,18 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
       } else if (casa.Escuelas_foot <= criteria.escuelasFoot + 10) {
         score += 3;
         partialMatches.push(`escuela a ${casa.Escuelas_foot} min caminando`);
+      }
+    }
+    
+    // NUEVA FUNCIONALIDAD: Búsqueda general cerca de escuela
+    if (criteria.nearSchool) {
+      // Consideramos "cerca" si está a menos de 15 minutos en carro
+      if (casa.Escuelas_Car <= 15) {
+        score += 8;
+        matches.push(`cerca de escuela (${casa.Escuelas_Car} min en carro)`);
+      } else if (casa.Escuelas_Car <= 25) {
+        score += 4;
+        partialMatches.push(`relativamente cerca de escuela (${casa.Escuelas_Car} min en carro)`);
       }
     }
     
@@ -186,7 +212,7 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
     .slice(0, 10);
 };
 
-// Función para extraer criterios de texto natural usando patrones
+// Función MEJORADA para extraer criterios de texto natural
 export const extractCriteriaFromText = (text: string): SearchCriteria => {
   const criteria: SearchCriteria = {};
   const lowerText = text.toLowerCase();
@@ -231,7 +257,7 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
     criteria.balcon = false;
   }
   
-  // Proximidad a servicios
+  // Proximidad a servicios específicos
   const hospitalCarMatch = lowerText.match(/hospital.*?(\d+).*?minutos?.*?carro/);
   if (hospitalCarMatch) {
     criteria.hospitalCar = parseInt(hospitalCarMatch[1]);
@@ -240,6 +266,20 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   const hospitalFootMatch = lowerText.match(/hospital.*?(\d+).*?minutos?.*?(caminando|pie)/);
   if (hospitalFootMatch) {
     criteria.hospitalFoot = parseInt(hospitalFootMatch[1]);
+  }
+  
+  // NUEVA FUNCIONALIDAD: Detectar búsquedas generales de proximidad
+  if (lowerText.includes('cerca') && lowerText.includes('hospital')) {
+    criteria.nearHospital = true;
+  }
+  
+  if (lowerText.includes('cerca') && (lowerText.includes('escuela') || lowerText.includes('colegio'))) {
+    criteria.nearSchool = true;
+  }
+  
+  // También detectar patrones como "al hospital", "del hospital"
+  if ((lowerText.includes('al hospital') || lowerText.includes('del hospital') || lowerText.includes('un hospital')) && !hospitalCarMatch && !hospitalFootMatch) {
+    criteria.nearHospital = true;
   }
   
   const escuelaCarMatch = lowerText.match(/escuela.*?(\d+).*?minutos?.*?carro/);
