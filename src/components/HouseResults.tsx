@@ -1,11 +1,7 @@
 import React from 'react';
 import HouseCard from './HouseCard';
-import { type CasaMatch, type Casa } from '../services/arcGisApi';
+import type { HouseResultsContainerProps } from '../types';
 
-interface HouseResultsContainerProps {
-  matches: CasaMatch[];
-  onHouseClick: (casa: Casa) => void;
-}
 
 const HouseResultsContainer: React.FC<HouseResultsContainerProps> = ({ matches, onHouseClick }) => {
   if (!matches || matches.length === 0) {

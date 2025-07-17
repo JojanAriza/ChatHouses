@@ -1,55 +1,128 @@
 import { streamText } from 'ai';
 import { openrouter } from '../lib/ai';
 import { searchCasas, extractCriteriaFromText, formatCasasResults } from './arcGisApi';
-import type { SearchCriteria } from './arcGisApi';
+import type { AIServiceConfig, ChatMessage, SearchCriteria } from '../types';
 
-export interface ChatMessage {
-  id: number;
-  text: string;
-  sender: 'user' | 'ai';
-  timestamp: Date;
-}
-
-export interface AIServiceConfig {
-  model?: string;
-  temperature?: number;
-  systemPrompt?: string;
-}
 
 class AIService {
   private defaultConfig: AIServiceConfig = {
     model: 'meta-llama/llama-3.3-70b-instruct:free',
     temperature: 0.7,
-    systemPrompt: `Eres un asistente de IA especializado en ayudar a las personas a encontrar casas. 
-    Tienes acceso a una base de datos de casas con información detallada sobre:
+    systemPrompt: `Eres un asistente de IA especializado en ayudar a las personas a encontrar casas en Bogotá, Colombia. 
+    Tienes acceso a una base de datos completa de propiedades con información detallada y específica.
+
+    **INFORMACIÓN DISPONIBLE EN LA BASE DE DATOS:**
+    
+    **Características básicas:**
     - Número de habitaciones (piezas)
     - Número de baños
+    - Área en metros cuadrados (m²)
+    - Número de pisos
+    - Precio en pesos colombianos
+    - Número de teléfono de contacto
+    - Nombre/identificador de la propiedad
+    
+    **Amenidades y servicios:**
     - Garage (sí/no)
     - Internet (sí/no)
-    - Si está amoblada (sí/no)
-    - Si tiene balcón (sí/no)
-    - Tiempo al hospital en carro y caminando
-    - Tiempo a escuelas en carro y caminando
+    - Amoblada/amueblada (sí/no)
+    - Balcón (sí/no)
+    - Ascensor (sí/no)
+    - Televisión (sí/no)
     
-    Cuando un usuario pregunte sobre casas, debes:
-    1. Analizar su consulta para identificar los criterios de búsqueda
-    2. Buscar en la base de datos las casas que mejor coincidan
-    3. Presentar los resultados de manera clara y organizada
-    4. Si no hay coincidencias exactas, mostrar las opciones más cercanas
+    **Proximidad a servicios (en minutos):**
+    - Hospital: tiempo en carro y caminando
+    - Escuelas: tiempo en carro y caminando
+    - Parques: tiempo en carro y caminando
+    - Universidades: tiempo en carro y caminando
     
-    Responde en español de manera amigable y profesional. Si la consulta no es sobre búsqueda de casas, responde normalmente como un asistente útil.`
+    **INSTRUCCIONES ESPECÍFICAS:**
+    
+    1. **Análisis de consultas:** Identifica cuidadosamente los criterios mencionados por el usuario:
+       - Números específicos (habitaciones, baños, área, pisos)
+       - Rangos de precios (desde X hasta Y, máximo X, mínimo X)
+       - Amenidades deseadas (garage, internet, amoblada, balcón, ascensor, TV)
+       - Proximidad a servicios (cerca de hospital, escuela, parque, universidad)
+       - Tiempos específicos de desplazamiento
+    
+    2. **Búsqueda inteligente:** 
+       - Busca primero coincidencias exactas
+       - Si no hay resultados, sugiere opciones similares
+       - Prioriza las características más importantes mencionadas
+       - Considera tolerancias razonables (±1 habitación, ±10m², ±100k precio)
+    
+    3. **Presentación de resultados:**
+       - Muestra máximo 5-10 opciones ordenadas por relevancia
+       - Destaca las coincidencias exactas y parciales
+       - Incluye toda la información relevante (precio, contacto, características)
+       - Menciona proximidad a servicios cuando sea relevante
+       - Usa formato claro con bullets y secciones
+    
+    4. **Manejo de consultas sin resultados:**
+       - Explica por qué no hay coincidencias
+       - Sugiere criterios alternativos
+       - Ofrece opciones más flexibles
+       - Pregunta si quieren ajustar algunos criterios
+    
+    5. **Consultas de seguimiento:**
+       - Si preguntan por más detalles de una propiedad específica
+       - Si quieren modificar criterios de búsqueda
+       - Si necesitan explicaciones sobre ubicaciones o servicios
+    
+    **EJEMPLOS DE RESPUESTAS ESPERADAS:**
+    
+    Para "Busco casa de 3 habitaciones con garage":
+    - Identificar: piezas=3, garage=true
+    - Buscar y mostrar resultados ordenados por puntaje
+    - Destacar coincidencias exactas
+    
+    Para "Casa barata cerca del hospital":
+    - Identificar: nearHospital=true, precio bajo
+    - Buscar propiedades con hospital_car <= 15 min
+    - Ordenar por precio ascendente
+    
+    Para "Apartamento amoblado con balcón, máximo 2 millones":
+    - Identificar: amoblada=true, balcon=true, precioMax=2000000
+    - Buscar coincidencias exactas primero
+    - Mostrar alternativas si no hay resultados
+    
+    **TONO Y ESTILO:**
+    - Amigable y profesional
+    - Usa términos locales colombianos
+    - Sé específico con números y datos
+    - Ofrece ayuda adicional cuando sea apropiado
+    - Haz preguntas clarificatorias si la consulta es ambigua
+    
+    **CUANDO NO ES SOBRE CASAS:**
+    Si la consulta no es sobre búsqueda de propiedades, responde normalmente como un asistente útil, pero siempre ofrece ayuda para encontrar casas si es relevante.
+    
+    Recuerda: Tu especialidad es conectar a las personas con las propiedades perfectas usando datos precisos y búsquedas inteligentes.`
   };
 
   private async shouldSearchCasas(text: string): Promise<boolean> {
     const lowerText = text.toLowerCase();
     const houseKeywords = [
-      'casa', 'casas', 'vivienda', 'hogar', 'apartamento', 'propiedad',
-      'habitación', 'habitaciones', 'cuarto', 'cuartos', 'dormitorio', 'dormitorios',
-      'baño', 'baños', 'garage', 'balcón', 'amoblada', 'amueblada',
-      'busco', 'necesito', 'quiero', 'me interesa', 'mostrar', 'encontrar'
+      'casa', 'casas', 'vivienda', 'hogar', 'apartamento', 'propiedad', 'inmueble',
+      'habitación', 'habitaciones', 'cuarto', 'cuartos', 'dormitorio', 'dormitorios', 'piezas',
+      'baño', 'baños', 'garage', 'balcón', 'amoblada', 'amueblada', 'ascensor',
+      'busco', 'necesito', 'quiero', 'me interesa', 'mostrar', 'encontrar', 'hay',
+      'precio', 'pesos', 'millones', 'alquiler', 'arriendo', 'venta',
+      'cerca', 'hospital', 'escuela', 'universidad', 'parque', 'colegio',
+      'internet', 'televisión', 'tv', 'pisos', 'área', 'metros', 'm2', 'm²'
     ];
     
-    return houseKeywords.some(keyword => lowerText.includes(keyword));
+    const searchPatterns = [
+      /\d+\s*(habitaciones?|cuartos?|dormitorios?|piezas?)/,
+      /\d+\s*(baños?|baño)/,
+      /\d+\s*(pisos?|piso)/,
+      /\d+\s*(m2|metros|m²)/,
+      /\$?\d+(?:\.\d{3})*(?:,\d{3})*/,
+      /(con|sin)\s+(garage|internet|balcón|ascensor|televisión)/,
+      /cerca\s+(del?|de)\s+(hospital|escuela|universidad|parque)/
+    ];
+    
+    return houseKeywords.some(keyword => lowerText.includes(keyword)) || 
+           searchPatterns.some(pattern => pattern.test(lowerText));
   }
 
   async generateResponse(
@@ -82,17 +155,26 @@ class AIService {
             const flexibleCriteria: SearchCriteria = {};
             if (criteria.piezas) flexibleCriteria.piezas = criteria.piezas;
             if (criteria.banos) flexibleCriteria.banos = criteria.banos;
+            if (criteria.garage !== undefined) flexibleCriteria.garage = criteria.garage;
+            if (criteria.nearHospital) flexibleCriteria.nearHospital = criteria.nearHospital;
+            if (criteria.nearSchool) flexibleCriteria.nearSchool = criteria.nearSchool;
             
             const flexibleMatches = await searchCasas(flexibleCriteria);
             if (flexibleMatches.length > 0) {
-              responseText = `No encontré casas que coincidan exactamente con todos tus criterios, pero aquí tienes algunas opciones similares:\n\n`;
+              responseText = `No encontré casas que coincidan exactamente con todos tus criterios, pero aquí tienes algunas opciones similares que podrían interesarte:\n\n`;
               responseText += formatCasasResults(flexibleMatches);
+            } else {
+              responseText = `No encontré casas que coincidan con tus criterios. Te sugiero:\n\n`;
+              responseText += `• Ampliar el rango de precio\n`;
+              responseText += `• Considerar propiedades con características similares\n`;
+              responseText += `• Buscar en zonas con buena conectividad\n\n`;
+              responseText += `¿Te gustaría ajustar algún criterio específico?`;
             }
           }
         }
       } catch (error) {
         console.error('Error al buscar casas:', error);
-        responseText = 'Hubo un problema al buscar casas en la base de datos. ¿Podrías intentar reformular tu consulta?';
+        responseText = 'Hubo un problema al buscar casas en la base de datos. ¿Podrías intentar reformular tu consulta con más detalles específicos?';
       }
     }
     
@@ -116,7 +198,7 @@ class AIService {
         messages: apiMessages,
         system: finalConfig.systemPrompt,
         temperature: finalConfig.temperature,
-        maxTokens: 1000,
+        maxTokens: 1200, // Aumentado para respuestas más completas
       });
       
       // Si ya tenemos resultados de casas, devolver esos resultados
@@ -164,7 +246,7 @@ class AIService {
         prompt,
         system: finalConfig.systemPrompt,
         temperature: finalConfig.temperature,
-        maxTokens: 1000,
+        maxTokens: 1200,
       });
       
       return result.textStream;

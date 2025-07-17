@@ -1,11 +1,7 @@
 import React from 'react';
-import { Home, Bed, Bath, Car, MapPin, Wifi, Building2, Star } from 'lucide-react';
-import { type CasaMatch, type Casa } from '../services/arcGisApi';
+import { Home, Bed, Bath, Car, MapPin, Wifi, Building2, Star, ArrowUp, Monitor } from 'lucide-react';
+import type { Casa, HouseCardProps } from '../types';
 
-interface HouseCardProps {
-  match: CasaMatch;
-  onHouseClick: (casa: Casa) => void;
-}
 
 // Type for values that can be validated
 type ValidatableValue = string | number | boolean | null | undefined;
@@ -21,12 +17,36 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
     return `Propiedad #${casa.OBJECTID}`;
   };
 
+  // Función para normalizar el score a un rango de 0-1
+  const normalizeScore = (score: number): number => {
+    // Si el score ya está entre 0 y 1, devolverlo tal como está
+    if (score >= 0 && score <= 1) {
+      return score;
+    }
+    
+    // Si el score es mayor a 1, normalizarlo
+    // Asumimos que scores típicos pueden estar entre 0 y 10
+    // pero ajustamos dinámicamente basado en el valor recibido
+    const maxExpectedScore = Math.max(10, score);
+    const normalizedScore = Math.min(score / maxExpectedScore, 1);
+    
+    return normalizedScore;
+  };
+
   // Función para obtener el color del score
-  const getScoreColor = (score: number): string => {
-    if (score >= 0.8) return 'bg-green-500/20 text-green-300 border-green-500/20';
-    if (score >= 0.6) return 'bg-blue-500/20 text-blue-300 border-blue-500/20';
-    if (score >= 0.4) return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/20';
+  const getScoreColor = (normalizedScore: number): string => {
+    if (normalizedScore >= 0.8) return 'bg-green-500/20 text-green-300 border-green-500/20';
+    if (normalizedScore >= 0.6) return 'bg-blue-500/20 text-blue-300 border-blue-500/20';
+    if (normalizedScore >= 0.4) return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/20';
     return 'bg-red-500/20 text-red-300 border-red-500/20';
+  };
+
+  // Función para obtener el texto descriptivo del score
+  const getScoreText = (normalizedScore: number): string => {
+    if (normalizedScore >= 0.8) return 'Excelente';
+    if (normalizedScore >= 0.6) return 'Bueno';
+    if (normalizedScore >= 0.4) return 'Regular';
+    return 'Básico';
   };
 
   // Función para verificar si un valor es válido (no es 0, '0', null, undefined, o string vacío)
@@ -45,12 +65,27 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
     return fallback;
   };
 
+  // Función para formatear el precio
+  const formatPrice = (price: number): string => {
+    if (!price || price === 0) return 'Precio a consultar';
+    return `$${price.toLocaleString('es-CO')}`;
+  };
+
+  // Función para formatear el área
+  const formatArea = (area: number): string => {
+    if (!area || area === 0) return 'No especificado';
+    return `${area} m²`;
+  };
+
+  // Normalizar el score para la visualización
+  const normalizedScore = normalizeScore(score);
+
   return (
     <div
       className="group bg-gradient-to-br from-white/10 via-white/5 to-transparent backdrop-blur-md rounded-2xl p-5 border border-blue-500/20 hover:border-blue-400/40 transition-all duration-300 cursor-pointer transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/10"
       onClick={() => onHouseClick(casa)}
     >
-      {/* Header con nombre y score */}
+      {/* Header con nombre, precio y score */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3 flex-1">
           <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
@@ -60,18 +95,26 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
             <h3 className="text-white font-semibold text-base leading-tight">
               {getHouseName(casa)}
             </h3>
-            {casa.Field && (
-              <p className="text-blue-300/80 text-sm mt-1 flex items-center">
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-blue-300/80 text-sm flex items-center">
                 <MapPin className="w-3 h-3 mr-1" />
-                {casa.Field}
+                {formatArea(casa.Area_m2)}
               </p>
-            )}
+              <p className="text-emerald-300 text-sm font-medium">
+                {formatPrice(casa.Precio)}
+              </p>
+            </div>
           </div>
         </div>
         
-        <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium border ${getScoreColor(score)}`}>
-          <Star className="w-3 h-3" />
-          <span>{Math.round(score * 100)}%</span>
+        <div className="flex flex-col items-end space-y-1">
+          <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium border ${getScoreColor(normalizedScore)}`}>
+            <Star className="w-3 h-3" />
+            <span>{Math.round(normalizedScore * 100)}%</span>
+          </div>
+          <div className="text-xs text-gray-400">
+            {getScoreText(normalizedScore)}
+          </div>
         </div>
       </div>
 
@@ -123,15 +166,24 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           </div>
           <div>
             <span className="text-sm font-medium text-white">
-              {casa.Amoblada ? 'Sí' : 'No'}
+              {isValidValue(casa.Pisos) ? casa.Pisos : 'No especificado'}
             </span>
-            <span className="text-xs text-gray-400 block">amoblada</span>
+            <span className="text-xs text-gray-400 block">
+              {isValidValue(casa.Pisos) ? (casa.Pisos === 1 ? 'piso' : 'pisos') : 'pisos'}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Características adicionales */}
       <div className="flex flex-wrap gap-2 mb-4">
+        <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
+          casa.Amoblada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-500/20 text-gray-400'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${casa.Amoblada ? 'bg-emerald-400' : 'bg-gray-400'}`}></div>
+          <span>{casa.Amoblada ? 'Amoblada' : 'Sin amoblar'}</span>
+        </div>
+        
         <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
           casa.Balcon ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-500/20 text-gray-400'
         }`}>
@@ -145,21 +197,57 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           <Wifi className="w-3 h-3" />
           <span>{casa.Internet ? 'Internet' : 'Sin internet'}</span>
         </div>
+
+        <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
+          casa.Asensor ? 'bg-indigo-500/20 text-indigo-300' : 'bg-gray-500/20 text-gray-400'
+        }`}>
+          <ArrowUp className="w-3 h-3" />
+          <span>{casa.Asensor ? 'Ascensor' : 'Sin ascensor'}</span>
+        </div>
+
+        <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
+          casa.Television ? 'bg-pink-500/20 text-pink-300' : 'bg-gray-500/20 text-gray-400'
+        }`}>
+          <Monitor className="w-3 h-3" />
+          <span>{casa.Television ? 'TV' : 'Sin TV'}</span>
+        </div>
       </div>
 
       {/* Proximidad a servicios */}
       <div className="border-t border-blue-500/20 pt-3">
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="text-gray-400">
-            <span className="text-blue-300 font-medium">Hospital:</span>
-            <div>{displayValue(casa.Hospital_Car, 'No disponible')}</div>
+          <div className="space-y-1">
+            <div className="text-gray-400">
+              <span className="text-blue-300 font-medium">🏥 Hospital:</span>
+              <div>{displayValue(casa.Hospital_Car, 'N/A')} min (carro)</div>
+            </div>
+            <div className="text-gray-400">
+              <span className="text-green-300 font-medium">🏫 Escuela:</span>
+              <div>{displayValue(casa.Escuelas_Car, 'N/A')} min (carro)</div>
+            </div>
           </div>
-          <div className="text-gray-400">
-            <span className="text-blue-300 font-medium">Escuelas:</span>
-            <div>{displayValue(casa.Escuelas_Car, 'No disponible')}</div>
+          <div className="space-y-1">
+            <div className="text-gray-400">
+              <span className="text-emerald-300 font-medium">🌳 Parque:</span>
+              <div>{displayValue(casa.Parques_Car, 'N/A')} min (carro)</div>
+            </div>
+            <div className="text-gray-400">
+              <span className="text-purple-300 font-medium">🎓 Universidad:</span>
+              <div>{displayValue(casa.Universidades_Car, 'N/A')} min (carro)</div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Información de contacto */}
+      {casa.Telefono && (
+        <div className="border-t border-blue-500/20 pt-3 mt-3">
+          <div className="text-xs text-gray-400">
+            <span className="text-blue-300 font-medium">📞 Contacto:</span>
+            <div className="text-white">{casa.Telefono}</div>
+          </div>
+        </div>
+      )}
 
       {/* Hover indicator */}
       <div className="mt-3 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">

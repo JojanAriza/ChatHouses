@@ -1,56 +1,8 @@
 import axios from "axios";
+import type { Casa, ArcGISFeature, SearchCriteria, CasaMatch } from "../types";
 
-const baseUrl = "https://services7.arcgis.com/BHeMmpbh6URXbisP/arcgis/rest/services/Casas_prueba_johan/FeatureServer/0/query";
+const baseUrl = "https://services7.arcgis.com/BHeMmpbh6URXbisP/arcgis/rest/services/Casas_final/FeatureServer/0/query";
 
-export interface Casa {
-  OBJECTID: number;
-  Name: string;
-  Banos: number;
-  Piezas: number;
-  Garage: number;
-  Internet: number;
-  Amoblada: number;
-  Balcon: number;
-  Hospital_Car: number;
-  Hospital_foot: number;
-  Escuelas_Car: number;
-  Escuelas_foot: number;
-  Field: number;
-  geometry?: {
-    x: number;
-    y: number;
-  };
-}
-
-export interface SearchCriteria {
-  banos?: number;
-  piezas?: number;
-  garage?: boolean;
-  internet?: boolean;
-  amoblada?: boolean;
-  balcon?: boolean;
-  hospitalCar?: number;
-  hospitalFoot?: number;
-  escuelasCar?: number;
-  escuelasFoot?: number;
-  nearHospital?: boolean;
-  nearSchool?: boolean;
-}
-
-export interface CasaMatch {
-  casa: Casa;
-  score: number;
-  matches: string[];
-  partialMatches: string[];
-}
-
-export interface ArcGISFeature {
-  attributes: Casa;
-  geometry: {
-    x: number;
-    y: number;
-  };
-}
 
 export const getCasas = async (): Promise<Casa[]> => {
   const params = {
@@ -76,7 +28,7 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
     const matches: string[] = [];
     const partialMatches: string[] = [];
     
-    // Coincidencias exactas (peso 10)
+    // Coincidencias exactas para números (peso 10)
     if (criteria.banos !== undefined) {
       if (casa.Banos === criteria.banos) {
         score += 10;
@@ -94,6 +46,26 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
       } else if (Math.abs(casa.Piezas - criteria.piezas) === 1) {
         score += 5;
         partialMatches.push(`${casa.Piezas} habitaciones (cercano a ${criteria.piezas})`);
+      }
+    }
+
+    if (criteria.pisos !== undefined) {
+      if (casa.Pisos === criteria.pisos) {
+        score += 8;
+        matches.push(`${criteria.pisos} pisos`);
+      } else if (Math.abs(casa.Pisos - criteria.pisos) === 1) {
+        score += 4;
+        partialMatches.push(`${casa.Pisos} pisos (cercano a ${criteria.pisos})`);
+      }
+    }
+
+    if (criteria.area !== undefined) {
+      if (Math.abs(casa.Area_m2 - criteria.area) <= 10) {
+        score += 8;
+        matches.push(`${casa.Area_m2} m² (área solicitada: ${criteria.area} m²)`);
+      } else if (Math.abs(casa.Area_m2 - criteria.area) <= 30) {
+        score += 4;
+        partialMatches.push(`${casa.Area_m2} m² (área solicitada: ${criteria.area} m²)`);
       }
     }
     
@@ -125,6 +97,49 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
         matches.push(criteria.balcon ? 'con balcón' : 'sin balcón');
       }
     }
+
+    if (criteria.asensor !== undefined) {
+      if ((casa.Asensor === 1) === criteria.asensor) {
+        score += 7;
+        matches.push(criteria.asensor ? 'con ascensor' : 'sin ascensor');
+      }
+    }
+
+    if (criteria.television !== undefined) {
+      if ((casa.Television === 1) === criteria.television) {
+        score += 6;
+        matches.push(criteria.television ? 'con televisión' : 'sin televisión');
+      }
+    }
+    
+    // Rango de precios (peso 9)
+    if (criteria.precioMin !== undefined || criteria.precioMax !== undefined) {
+      const precio = casa.Precio;
+      if (precio) {
+        let priceMatch = true;
+        if (criteria.precioMin !== undefined && precio < criteria.precioMin) {
+          priceMatch = false;
+        }
+        if (criteria.precioMax !== undefined && precio > criteria.precioMax) {
+          priceMatch = false;
+        }
+        
+        if (priceMatch) {
+          score += 9;
+          matches.push(`precio: $${precio.toLocaleString()}`);
+        } else {
+          // Precio cercano al rango
+          const minDiff = criteria.precioMin ? Math.abs(precio - criteria.precioMin) : 0;
+          const maxDiff = criteria.precioMax ? Math.abs(precio - criteria.precioMax) : 0;
+          const tolerance = 100000; // 100k de tolerancia
+          
+          if (minDiff <= tolerance || maxDiff <= tolerance) {
+            score += 4;
+            partialMatches.push(`precio: $${precio.toLocaleString()} (fuera del rango solicitado)`);
+          }
+        }
+      }
+    }
     
     // Proximidad a servicios específicos (peso 6)
     if (criteria.hospitalCar !== undefined) {
@@ -146,19 +161,7 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
         partialMatches.push(`hospital a ${casa.Hospital_foot} min caminando`);
       }
     }
-    
-    // NUEVA FUNCIONALIDAD: Búsqueda general cerca de hospital
-    if (criteria.nearHospital) {
-      // Consideramos "cerca" si está a menos de 15 minutos en carro
-      if (casa.Hospital_Car <= 15) {
-        score += 8;
-        matches.push(`cerca del hospital (${casa.Hospital_Car} min en carro)`);
-      } else if (casa.Hospital_Car <= 25) {
-        score += 4;
-        partialMatches.push(`relativamente cerca del hospital (${casa.Hospital_Car} min en carro)`);
-      }
-    }
-    
+
     if (criteria.escuelasCar !== undefined) {
       if (casa.Escuelas_Car <= criteria.escuelasCar) {
         score += 6;
@@ -178,16 +181,87 @@ export const searchCasas = async (criteria: SearchCriteria): Promise<CasaMatch[]
         partialMatches.push(`escuela a ${casa.Escuelas_foot} min caminando`);
       }
     }
+
+    // NUEVOS CAMPOS: Parques
+    if (criteria.parquesCar !== undefined) {
+      if (casa.Parques_Car <= criteria.parquesCar) {
+        score += 6;
+        matches.push(`parque a ${casa.Parques_Car} min en carro`);
+      } else if (casa.Parques_Car <= criteria.parquesCar + 5) {
+        score += 3;
+        partialMatches.push(`parque a ${casa.Parques_Car} min en carro`);
+      }
+    }
     
-    // NUEVA FUNCIONALIDAD: Búsqueda general cerca de escuela
+    if (criteria.parquesFoot !== undefined) {
+      if (casa.Parques_foot <= criteria.parquesFoot) {
+        score += 6;
+        matches.push(`parque a ${casa.Parques_foot} min caminando`);
+      } else if (casa.Parques_foot <= criteria.parquesFoot + 10) {
+        score += 3;
+        partialMatches.push(`parque a ${casa.Parques_foot} min caminando`);
+      }
+    }
+
+    // NUEVOS CAMPOS: Universidades
+    if (criteria.universidadesCar !== undefined) {
+      if (casa.Universidades_Car <= criteria.universidadesCar) {
+        score += 6;
+        matches.push(`universidad a ${casa.Universidades_Car} min en carro`);
+      } else if (casa.Universidades_Car <= criteria.universidadesCar + 5) {
+        score += 3;
+        partialMatches.push(`universidad a ${casa.Universidades_Car} min en carro`);
+      }
+    }
+    
+    if (criteria.universidadesFoot !== undefined) {
+      if (casa.Universidades_foot <= criteria.universidadesFoot) {
+        score += 6;
+        matches.push(`universidad a ${casa.Universidades_foot} min caminando`);
+      } else if (casa.Universidades_foot <= criteria.universidadesFoot + 10) {
+        score += 3;
+        partialMatches.push(`universidad a ${casa.Universidades_foot} min caminando`);
+      }
+    }
+    
+    // Búsquedas generales de proximidad (peso 8)
+    if (criteria.nearHospital) {
+      if (casa.Hospital_Car <= 15) {
+        score += 8;
+        matches.push(`cerca del hospital (${casa.Hospital_Car} min en carro)`);
+      } else if (casa.Hospital_Car <= 25) {
+        score += 4;
+        partialMatches.push(`relativamente cerca del hospital (${casa.Hospital_Car} min en carro)`);
+      }
+    }
+    
     if (criteria.nearSchool) {
-      // Consideramos "cerca" si está a menos de 15 minutos en carro
       if (casa.Escuelas_Car <= 15) {
         score += 8;
         matches.push(`cerca de escuela (${casa.Escuelas_Car} min en carro)`);
       } else if (casa.Escuelas_Car <= 25) {
         score += 4;
         partialMatches.push(`relativamente cerca de escuela (${casa.Escuelas_Car} min en carro)`);
+      }
+    }
+
+    if (criteria.nearPark) {
+      if (casa.Parques_Car <= 15) {
+        score += 8;
+        matches.push(`cerca de parque (${casa.Parques_Car} min en carro)`);
+      } else if (casa.Parques_Car <= 25) {
+        score += 4;
+        partialMatches.push(`relativamente cerca de parque (${casa.Parques_Car} min en carro)`);
+      }
+    }
+
+    if (criteria.nearUniversity) {
+      if (casa.Universidades_Car <= 15) {
+        score += 8;
+        matches.push(`cerca de universidad (${casa.Universidades_Car} min en carro)`);
+      } else if (casa.Universidades_Car <= 25) {
+        score += 4;
+        partialMatches.push(`relativamente cerca de universidad (${casa.Universidades_Car} min en carro)`);
       }
     }
     
@@ -227,6 +301,33 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   if (piezasMatch) {
     criteria.piezas = parseInt(piezasMatch[1]);
   }
+
+  const pisosMatch = lowerText.match(/(\d+)\s*(pisos?|piso|niveles?|nivel)/);
+  if (pisosMatch) {
+    criteria.pisos = parseInt(pisosMatch[1]);
+  }
+
+  const areaMatch = lowerText.match(/(\d+)\s*(m2|metros cuadrados?|metro cuadrado|m²)/);
+  if (areaMatch) {
+    criteria.area = parseInt(areaMatch[1]);
+  }
+
+  // Rango de precios
+  const precioRangeMatch = lowerText.match(/entre\s*\$?(\d+(?:\.\d{3})*(?:,\d{3})*)\s*y\s*\$?(\d+(?:\.\d{3})*(?:,\d{3})*)/);
+  if (precioRangeMatch) {
+    criteria.precioMin = parseInt(precioRangeMatch[1].replace(/[.,]/g, ''));
+    criteria.precioMax = parseInt(precioRangeMatch[2].replace(/[.,]/g, ''));
+  }
+
+  const precioMaxMatch = lowerText.match(/(?:hasta|máximo|max|menor que|<)\s*\$?(\d+(?:\.\d{3})*(?:,\d{3})*)/);
+  if (precioMaxMatch) {
+    criteria.precioMax = parseInt(precioMaxMatch[1].replace(/[.,]/g, ''));
+  }
+
+  const precioMinMatch = lowerText.match(/(?:desde|mínimo|min|mayor que|>)\s*\$?(\d+(?:\.\d{3})*(?:,\d{3})*)/);
+  if (precioMinMatch) {
+    criteria.precioMin = parseInt(precioMinMatch[1].replace(/[.,]/g, ''));
+  }
   
   // Características booleanas
   if (lowerText.includes('con garage') || lowerText.includes('garage')) {
@@ -256,6 +357,20 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   if (lowerText.includes('sin balcón')) {
     criteria.balcon = false;
   }
+
+  if (lowerText.includes('con ascensor') || lowerText.includes('ascensor')) {
+    criteria.asensor = true;
+  }
+  if (lowerText.includes('sin ascensor')) {
+    criteria.asensor = false;
+  }
+
+  if (lowerText.includes('con televisión') || lowerText.includes('con television') || lowerText.includes('televisión') || lowerText.includes('television')) {
+    criteria.television = true;
+  }
+  if (lowerText.includes('sin televisión') || lowerText.includes('sin television')) {
+    criteria.television = false;
+  }
   
   // Proximidad a servicios específicos
   const hospitalCarMatch = lowerText.match(/hospital.*?(\d+).*?minutos?.*?carro/);
@@ -267,21 +382,7 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   if (hospitalFootMatch) {
     criteria.hospitalFoot = parseInt(hospitalFootMatch[1]);
   }
-  
-  // NUEVA FUNCIONALIDAD: Detectar búsquedas generales de proximidad
-  if (lowerText.includes('cerca') && lowerText.includes('hospital')) {
-    criteria.nearHospital = true;
-  }
-  
-  if (lowerText.includes('cerca') && (lowerText.includes('escuela') || lowerText.includes('colegio'))) {
-    criteria.nearSchool = true;
-  }
-  
-  // También detectar patrones como "al hospital", "del hospital"
-  if ((lowerText.includes('al hospital') || lowerText.includes('del hospital') || lowerText.includes('un hospital')) && !hospitalCarMatch && !hospitalFootMatch) {
-    criteria.nearHospital = true;
-  }
-  
+
   const escuelaCarMatch = lowerText.match(/escuela.*?(\d+).*?minutos?.*?carro/);
   if (escuelaCarMatch) {
     criteria.escuelasCar = parseInt(escuelaCarMatch[1]);
@@ -290,6 +391,50 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   const escuelaFootMatch = lowerText.match(/escuela.*?(\d+).*?minutos?.*?(caminando|pie)/);
   if (escuelaFootMatch) {
     criteria.escuelasFoot = parseInt(escuelaFootMatch[1]);
+  }
+
+  // NUEVOS CAMPOS: Parques
+  const parqueCarMatch = lowerText.match(/parque.*?(\d+).*?minutos?.*?carro/);
+  if (parqueCarMatch) {
+    criteria.parquesCar = parseInt(parqueCarMatch[1]);
+  }
+  
+  const parqueFootMatch = lowerText.match(/parque.*?(\d+).*?minutos?.*?(caminando|pie)/);
+  if (parqueFootMatch) {
+    criteria.parquesFoot = parseInt(parqueFootMatch[1]);
+  }
+
+  // NUEVOS CAMPOS: Universidades
+  const universidadCarMatch = lowerText.match(/universidad.*?(\d+).*?minutos?.*?carro/);
+  if (universidadCarMatch) {
+    criteria.universidadesCar = parseInt(universidadCarMatch[1]);
+  }
+  
+  const universidadFootMatch = lowerText.match(/universidad.*?(\d+).*?minutos?.*?(caminando|pie)/);
+  if (universidadFootMatch) {
+    criteria.universidadesFoot = parseInt(universidadFootMatch[1]);
+  }
+  
+  // Búsquedas generales de proximidad
+  if (lowerText.includes('cerca') && lowerText.includes('hospital')) {
+    criteria.nearHospital = true;
+  }
+  
+  if (lowerText.includes('cerca') && (lowerText.includes('escuela') || lowerText.includes('colegio'))) {
+    criteria.nearSchool = true;
+  }
+
+  if (lowerText.includes('cerca') && lowerText.includes('parque')) {
+    criteria.nearPark = true;
+  }
+
+  if (lowerText.includes('cerca') && lowerText.includes('universidad')) {
+    criteria.nearUniversity = true;
+  }
+  
+  // También detectar patrones como "al hospital", "del hospital"
+  if ((lowerText.includes('al hospital') || lowerText.includes('del hospital') || lowerText.includes('un hospital')) && !hospitalCarMatch && !hospitalFootMatch) {
+    criteria.nearHospital = true;
   }
   
   return criteria;
@@ -306,13 +451,27 @@ export const formatCasasResults = (matches: CasaMatch[]): string => {
   matches.forEach((match, index) => {
     const casa = match.casa;
     result += `${index + 1}. **${casa.Name || `Casa ${casa.OBJECTID}`}**\n`;
-    result += `   • ${casa.Piezas} habitaciones, ${casa.Banos} baños\n`;
+    result += `   • ${casa.Piezas || 0} habitaciones, ${casa.Banos || 0} baños\n`;
+    result += `   • ${casa.Pisos || 'N/A'} pisos, ${casa.Area_m2 || 'N/A'} m²\n`;
     result += `   • ${casa.Garage ? 'Con' : 'Sin'} garage\n`;
     result += `   • ${casa.Internet ? 'Con' : 'Sin'} internet\n`;
     result += `   • ${casa.Amoblada ? 'Amoblada' : 'Sin amoblar'}\n`;
     result += `   • ${casa.Balcon ? 'Con' : 'Sin'} balcón\n`;
-    result += `   • Hospital: ${casa.Hospital_Car} min en carro, ${casa.Hospital_foot} min caminando\n`;
-    result += `   • Escuela: ${casa.Escuelas_Car} min en carro, ${casa.Escuelas_foot} min caminando\n`;
+    result += `   • ${casa.Asensor ? 'Con' : 'Sin'} ascensor\n`;
+    result += `   • ${casa.Television ? 'Con' : 'Sin'} televisión\n`;
+    
+    if (casa.Precio) {
+      result += `   • Precio: $${casa.Precio.toLocaleString()}\n`;
+    }
+    
+    if (casa.Telefono) {
+      result += `   • Teléfono: ${casa.Telefono}\n`;
+    }
+    
+    result += `   • Hospital: ${casa.Hospital_Car || 'N/A'} min en carro, ${casa.Hospital_foot || 'N/A'} min caminando\n`;
+    result += `   • Escuela: ${casa.Escuelas_Car || 'N/A'} min en carro, ${casa.Escuelas_foot || 'N/A'} min caminando\n`;
+    result += `   • Parque: ${casa.Parques_Car || 'N/A'} min en carro, ${casa.Parques_foot || 'N/A'} min caminando\n`;
+    result += `   • Universidad: ${casa.Universidades_Car || 'N/A'} min en carro, ${casa.Universidades_foot || 'N/A'} min caminando\n`;
     
     if (match.matches.length > 0) {
       result += `   ✅ **Coincidencias exactas:** ${match.matches.join(', ')}\n`;

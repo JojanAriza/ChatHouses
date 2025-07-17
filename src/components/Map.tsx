@@ -1,92 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { X, MapPin, Loader2 } from 'lucide-react';
-import type { Casa } from '../services/arcGisApi';
+import type { ArcGISRequire, MapModalProps, ArcGISMap, ArcGISView, ArcGISFeatureLayer, ArcGISPoint, ArcGISSymbol, ArcGISPopupTemplate, ArcGISGraphic } from '../types';
 
-// Definir tipos para ArcGIS API
-interface ArcGISRequire {
-  (dependencies: string[], callback: (...modules: unknown[]) => void, errback?: (error: Error) => void): void;
-}
-
-interface ArcGISMap {
-  add: (layer: unknown) => void;
-}
-
-interface ArcGISView {
-  container: HTMLDivElement;
-  map: ArcGISMap;
-  center: [number, number];
-  zoom: number;
-  constraints: {
-    minZoom: number;
-    maxZoom: number;
-  };
-  ui: {
-    components: string[];
-  };
-  popup: {
-    dockEnabled: boolean;
-    dockOptions: {
-      buttonEnabled: boolean;
-      breakpoint: boolean;
-      position: string;
-    };
-    defaultPopupTemplateEnabled: boolean;
-    visibleElements: {
-      featureNavigation: boolean;
-      heading: boolean;
-      closeButton: boolean;
-    };
-    open: (options: {
-      features: unknown[];
-      location: unknown;
-      updateLocationEnabled: boolean;
-    }) => void;
-  };
-  graphics: {
-    add: (graphic: unknown) => void;
-  };
-  when: () => Promise<void>;
-  resize: () => void;
-  goTo: (target: { center: [number, number]; zoom: number }, options?: { duration: number }) => Promise<void>;
-  destroy: () => void;
-  destroyed: boolean;
-}
-
-interface ArcGISPoint {
-  x: number;
-  y: number;
-  spatialReference: { wkid: number };
-}
-
-interface ArcGISGraphic {
-  geometry: ArcGISPoint;
-  symbol: unknown;
-  popupTemplate: unknown;
-}
-
-interface ArcGISSymbol {
-  color: [number, number, number, number];
-  outline: { color: [number, number, number]; width: number };
-  size: number;
-}
-
-interface ArcGISPopupTemplate {
-  title: string;
-  content: string;
-}
-
-interface ArcGISFeatureLayer {
-  url: string;
-  renderer: {
-    type: string;
-    symbol: {
-      type: string;
-      color: [number, number, number, number];
-      outline: { color: [number, number, number]; width: number };
-      size: number;
-    };
-  };
-}
 
 declare global {
   interface Window {
@@ -94,11 +9,6 @@ declare global {
   }
 }
 
-interface MapModalProps {
-  casa: Casa;
-  isOpen: boolean;
-  onClose: () => void;
-}
 
 const MapModal: React.FC<MapModalProps> = ({ casa, isOpen, onClose }) => {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -297,7 +207,7 @@ const MapModal: React.FC<MapModalProps> = ({ casa, isOpen, onClose }) => {
       });
 
       const featureLayer = new FeatureLayer({
-        url: 'https://services7.arcgis.com/BHeMmpbh6URXbisP/arcgis/rest/services/Casas_prueba_johan/FeatureServer/0',
+        url: 'https://services7.arcgis.com/BHeMmpbh6URXbisP/arcgis/rest/services/Casas_final/FeatureServer/0',
         renderer: {
           type: 'simple',
           symbol: {
