@@ -197,9 +197,7 @@ export const extractCriteriaFromFollowUp = (
   const detectValueChanges = (text: string, previousCriteria: SearchCriteria | null): SearchCriteria => {
     const changes: SearchCriteria = {};
     const lowerText = text.toLowerCase();
-    
-    console.log("🔍 Analizando texto:", lowerText);
-    console.log("📋 Criterios previos:", previousCriteria);
+  
 
     // NUEVO: Patrones para detectar cambios sin especificar el tipo (inferir del contexto)
     const contextualChangePatterns = [
@@ -214,22 +212,17 @@ export const extractCriteriaFromFollowUp = (
     for (const pattern of contextualChangePatterns) {
       const matches = [...lowerText.matchAll(pattern.regex)];
       
-      console.log(`🔎 Patrón contextual:`, pattern.regex.source);
-      console.log(`📝 Matches encontrados:`, matches);
-      
       if (matches.length > 0 && previousCriteria) {
         const match = matches[0];
         if (match[1] && match[2]) {
           const oldValue = parseInt(match[1]);
           const newValue = parseInt(match[2]);
-          
-          console.log(`🎯 Cambio contextual detectado: ${oldValue} → ${newValue}`);
+      
           
           // Buscar qué campo tiene el valor anterior para inferir el contexto
           const fieldsToCheck = ['pisos', 'piezas', 'banos'] as const;
           for (const field of fieldsToCheck) {
             if (previousCriteria[field] === oldValue) {
-              console.log(`✅ Campo inferido: ${field} (${oldValue} → ${newValue})`);
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (changes as any)[field] = newValue;
               return changes; // Retornar inmediatamente una vez encontrado
@@ -288,11 +281,7 @@ export const extractCriteriaFromFollowUp = (
     for (const pattern of changePatterns) {
       const matches = [...lowerText.matchAll(pattern.regex)];
       
-      console.log(`🔎 Patrón ${pattern.field}:`, pattern.regex.source);
-      console.log(`📝 Matches encontrados:`, matches);
-      
       for (const match of matches) {
-        console.log(`✨ Match completo:`, match);
         
         if (pattern.regex.source.includes('en\\s+vez\\s+de|en\\s+lugar\\s+de|cambiar')) {
           // Para patrones de cambio "de X a Y"
@@ -306,10 +295,8 @@ export const extractCriteriaFromFollowUp = (
           }
           
           if (newValue && !isNaN(newValue)) {
-            console.log(`🔄 Cambio detectado - nuevo valor: ${newValue}`);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (changes as any)[pattern.field] = newValue;
-            console.log(`✅ Aplicado cambio para ${pattern.field}: ${newValue}`);
           }
         } else {
           // Para otros patrones, tomar el primer número
@@ -321,13 +308,11 @@ export const extractCriteriaFromFollowUp = (
               if (currentValue !== newValue) {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (changes as any)[pattern.field] = newValue;
-                console.log(`✅ Cambio aplicado para ${pattern.field}: ${currentValue} → ${newValue}`);
               }
             } else if (!previousCriteria) {
               // Si no hay criterios previos, agregar directamente
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (changes as any)[pattern.field] = newValue;
-              console.log(`✅ Valor inicial para ${pattern.field}: ${newValue}`);
             }
           }
         }
@@ -362,11 +347,8 @@ export const extractCriteriaFromFollowUp = (
       if (boolPattern.regex.test(lowerText)) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (changes as any)[boolPattern.field] = boolPattern.value;
-        console.log(`✅ Cambio booleano para ${boolPattern.field}: ${boolPattern.value}`);
       }
     }
-
-    console.log("🎯 Cambios finales detectados:", changes);
     return changes;
   };
 
@@ -390,7 +372,6 @@ export const extractCriteriaFromFollowUp = (
 
   // Si no hay criterios previos, retornar los nuevos
   if (!previousCriteria) {
-    console.log("🆕 Primera búsqueda - criterios:", criteria);
     return criteria;
   }
 
@@ -408,7 +389,6 @@ export const extractCriteriaFromFollowUp = (
     lowerText.includes("olvídate de lo anterior");
 
   if (isCompletelyNewSearch) {
-    console.log("🔄 Nueva búsqueda completa detectada");
     return criteria;
   }
 
@@ -420,11 +400,6 @@ export const extractCriteriaFromFollowUp = (
       (merged as any)[key] = newValue;
     }
   });
-
-  // DEBUG: Log para verificar el proceso
-  console.log("🔄 Cambios detectados:", detectedChanges);
-  console.log("📝 Criterios anteriores:", previousCriteria);
-  console.log("✅ Criterios finales:", merged);
 
   return merged;
 };

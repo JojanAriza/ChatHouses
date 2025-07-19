@@ -203,3 +203,56 @@ export interface HouseDetailsModalProps {
   onClose: () => void;
   onOpenMap: (casa: Casa) => void;
 }
+
+// Interfaces específicas para el reconocimiento de voz
+export interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+}
+
+export interface SpeechRecognitionResultList {
+  length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+export interface SpeechRecognitionResult {
+  length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal: boolean;
+}
+
+export interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+export interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+  message: string;
+}
+
+export interface SpeechRecognitionInstance {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start(): void;
+  stop(): void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onstart: (() => void) | null;
+}
+
+export interface SpeechRecognitionConstructor {
+  new(): SpeechRecognitionInstance;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: SpeechRecognitionConstructor | undefined;
+    webkitSpeechRecognition: SpeechRecognitionConstructor | undefined;
+  }
+}
