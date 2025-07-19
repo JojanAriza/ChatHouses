@@ -12,7 +12,6 @@ export class GenericPatternExtractor {
       
       const match = lowerText.match(genericPattern);
       if (match) {
-        console.log('🔍 Match genérico:', match);
         const newNumber = TextToNumberConverter.convert(match[3]);
         
         if (newNumber !== null) {

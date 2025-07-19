@@ -10,14 +10,7 @@ import ErrorMessage from "../components/ErrorMessage";
 import Loading from "../components/Loading";
 import QuickSearch from "../components/QuickSearch";
 import { searchCasas } from "../services/casaSearch";
-
-// Importar las funciones extraídas
-import {
-  isHouseQuery,
-  isFollowUpQuery,
-  extractCriteriaFromFollowUp,
-  formatCriteriaText,
-} from "../utils/criteriaExtractor";
+import { isHouseQuery, isFollowUpQuery, extractCriteriaFromFollowUp, formatCriteriaText } from "../utils/criteriaExtractor";
 import { generateRefinementText } from "../utils/responseGenerator";
 import { convertToMessages, processAIStream } from "../utils/messageUtils";
 
@@ -36,7 +29,6 @@ export default function AIChat() {
   const [selectedCasa, setSelectedCasa] = useState<Casa | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState<boolean>(false);
-  // Estado para mantener los criterios de la última búsqueda
   const [lastSearchCriteria, setLastSearchCriteria] =
     useState<SearchCriteria | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -57,12 +49,9 @@ export default function AIChat() {
     try {
       // Verificar si es una consulta sobre casas
       if (isHouseQuery(userMessage)) {
-        console.log("🏠 Detectada consulta sobre casas");
-        console.log("📋 Criterios anteriores:", lastSearchCriteria);
 
         // Determinar si es una consulta de seguimiento o una nueva búsqueda
         const isFollowUp = isFollowUpQuery(userMessage, lastSearchCriteria !== null);
-        console.log("🔄 Es seguimiento:", isFollowUp);
 
         // Guardar referencia a criterios previos ANTES de actualizar
         const previousCriteria = lastSearchCriteria;
@@ -72,30 +61,15 @@ export default function AIChat() {
           userMessage,
           lastSearchCriteria
         );
-        console.log("🎯 Criterios finales:", criteria);
 
         // CRUCIAL: Asegurar que siempre haya al menos un criterio para búsquedas de casas
         const hasAnyCriteria = Object.keys(criteria).length > 0;
-        console.log("📊 Tiene criterios:", hasAnyCriteria);
 
         if (hasAnyCriteria || isHouseQuery(userMessage)) {
           // Actualizar los criterios de la última búsqueda
           setLastSearchCriteria(criteria);
 
-          console.log("🔍 Iniciando búsqueda con criterios:", criteria);
           const matches = await searchCasas(criteria);
-          console.log("🏘️ Casas encontradas:", matches.length);
-
-          // Debug específico para resultados de "amoblada"
-          if (criteria.amoblada !== undefined) {
-            console.log("🏠 DEBUG RESULTADOS AMOBLADA:");
-            console.log("  - Buscando amoblada:", criteria.amoblada);
-            console.log("  - Resultados encontrados:", matches.length);
-            if (matches.length > 0) {
-              console.log("  - Primera casa amoblada:", matches[0]?.casa.Amoblada);
-              console.log("  - Todas las casas amoblada:", matches.map(c => c.casa.Amoblada));
-            }
-          }
 
           // Crear mensaje con resultados
           let responseText = "";
@@ -138,22 +112,14 @@ export default function AIChat() {
             houseResults: matches.length > 0 ? [...matches] : undefined,
           };
 
-          console.log("📤 Enviando mensaje AI:");
-          console.log("  - ID:", aiMessage.id);
-          console.log("  - Texto:", aiMessage.text.substring(0, 100) + "...");
-          console.log("  - houseResults length:", aiMessage.houseResults?.length || 0);
-
           // Usar callback para asegurar que el estado se actualiza correctamente
           setMessages((prevMessages) => {
             const newMessages = [...prevMessages, aiMessage];
-            console.log("📝 Estado actualizado. Total mensajes:", newMessages.length);
-            console.log("📝 Último mensaje houseResults length:", newMessages[newMessages.length - 1].houseResults?.length || 0);
             return newMessages;
           });
 
         } else {
           // No se pudieron extraer criterios, usar IA normal
-          console.log("❌ No se pudieron extraer criterios, usando IA normal");
           const chatMessages = convertToMessages(userMessage, messages);
           const aiResponseStream = await aiService.generateResponse(
             chatMessages
@@ -172,7 +138,6 @@ export default function AIChat() {
         }
       } else {
         // Consulta general, usar IA normal
-        console.log("💬 Consulta general, usando IA normal");
         const chatMessages = convertToMessages(userMessage, messages);
         const aiResponseStream = await aiService.generateResponse(chatMessages);
         const text = await processAIStream(aiResponseStream);

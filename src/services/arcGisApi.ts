@@ -64,10 +64,6 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   const proximities = ProximityPatternExtractor.extractProximities(text);
   Object.assign(criteria, proximities);
 
-  // Debug logging
-  console.log('🔍 Texto analizado:', text);
-  console.log('📍 Proximidades extraídas:', proximities);
-  console.log('📋 Criterios completos:', criteria);
 
   return criteria;
 };
@@ -129,7 +125,6 @@ export const formatCasasResults = (matches: CasaMatch[]): string => {
       result += `   ⚠️ **Coincidencias parciales:** ${match.partialMatches.join(
         ", "
       )}\n`;
-      console.log('hola');
       
     }
 

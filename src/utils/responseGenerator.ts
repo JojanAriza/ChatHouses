@@ -6,10 +6,6 @@ export const generateRefinementText = (
 ): string => {
   const changes: string[] = [];
 
-  console.log("🔍 Comparando criterios para refinamiento:");
-  console.log("  - Previous:", previousCriteria);
-  console.log("  - New:", newCriteria);
-
   // Comparar y encontrar los cambios REALES
   (Object.keys(newCriteria) as (keyof SearchCriteria)[]).forEach((key) => {
     const oldValue = previousCriteria[key];
@@ -19,9 +15,6 @@ export const generateRefinementText = (
     if (newValue !== undefined && newValue !== null) {
       // Si no existía antes o cambió
       if (oldValue === undefined || oldValue !== newValue) {
-        console.log(
-          `🔄 Cambio detectado en ${key}: ${oldValue} -> ${newValue}`
-        );
 
         switch (key) {
           case "internet":

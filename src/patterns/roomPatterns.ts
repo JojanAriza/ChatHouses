@@ -28,7 +28,6 @@ export class RoomPatternExtractor {
     for (const pattern of this.specificPatterns) {
       const match = lowerText.match(pattern);
       if (match) {
-        console.log('🏠 Match habitaciones específico:', match);
         
         if (match[3]) {
           return TextToNumberConverter.convert(match[3]);

@@ -28,7 +28,6 @@ export class BathroomPatternExtractor {
     for (const pattern of this.specificPatterns) {
       const match = lowerText.match(pattern);
       if (match) {
-        console.log('🛁 Match baños específico:', match);
         
         if (match[3]) {
           return TextToNumberConverter.convert(match[3]);
