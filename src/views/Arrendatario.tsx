@@ -3,7 +3,7 @@ import { Send, Bot, User, Loader2, Search, Mic, MicOff } from "lucide-react";
 import aiService from "../services/aiService";
 import MapModal from "../components/Map";
 import HouseResultsContainer from "../components/HouseResults";
-import type { Casa, Message, SearchCriteria, SpeechRecognitionErrorEvent, SpeechRecognitionEvent, SpeechRecognitionInstance } from "../types";
+import type { Casa, Message, SearchCriteria } from "../types";
 import HouseDetailsModal from "../components/HouseDetailsModal";
 import Header from "../components/Header";
 import ErrorMessage from "../components/ErrorMessage";
@@ -13,6 +13,7 @@ import { searchCasas } from "../services/casaSearch";
 import { isHouseQuery, isFollowUpQuery, extractCriteriaFromFollowUp, formatCriteriaText } from "../utils/criteriaExtractor";
 import { generateRefinementText } from "../utils/responseGenerator";
 import { convertToMessages, processAIStream } from "../utils/messageUtils";
+import { useVoiceRecognition } from "../utils/useVoiceRecognition";
 
 export default function AIChat() {
   const [messages, setMessages] = useState<Message[]>([
@@ -30,12 +31,58 @@ export default function AIChat() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState<boolean>(false);
   const [lastSearchCriteria, setLastSearchCriteria] = useState<SearchCriteria | null>(null);
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [recognition, setRecognition] = useState<SpeechRecognitionInstance | null>(null);
-  const [speechSupported, setSpeechSupported] = useState<boolean>(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Hook de reconocimiento de voz
+  const {
+    isListening,
+    speechSupported,
+    error: voiceError,
+    transcript,
+    toggleListening,
+    resetError: resetVoiceError,
+  } = useVoiceRecognition(
+    // Callback cuando se obtiene transcript final
+    (finalTranscript: string) => {
+      const userMessage: Message = {
+        id: Date.now(),
+        text: finalTranscript,
+        sender: "user",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMessage]);
+      setInputMessage(""); // Limpiar input
+      setError(null);
+      resetVoiceError();
+
+      // Generar respuesta de IA
+      generateAIResponse(finalTranscript);
+    },
+    {
+      language: 'es-ES',
+      continuous: false,
+      interimResults: true,
+      maxAlternatives: 1,
+      autoSubmitDelay: 300,
+    }
+  );
+
+  // Actualizar input con transcript en tiempo real
+  useEffect(() => {
+    if (transcript && isListening) {
+      setInputMessage(transcript);
+    }
+  }, [transcript, isListening]);
+
+  // Manejar errores de voz
+  useEffect(() => {
+    if (voiceError) {
+      setError(voiceError);
+    }
+  }, [voiceError]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -44,107 +91,6 @@ export default function AIChat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  // Inicializar reconocimiento de voz
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        setSpeechSupported(true);
-        const recognitionInstance = new SpeechRecognition();
-        
-        // Configuración del reconocimiento de voz
-        recognitionInstance.lang = 'es-ES'; // Español
-        recognitionInstance.continuous = false; // No continuo
-        recognitionInstance.interimResults = true; // Resultados intermedios
-        recognitionInstance.maxAlternatives = 1;
-
-        // Evento cuando se recibe resultado
-        recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
-          const current = event.resultIndex;
-          const transcript = event.results[current][0].transcript;
-          
-          // Actualizar input con el texto transcrito
-          setInputMessage(transcript.trim());
-          
-          // Si es resultado final, auto-enviar después de un breve delay
-          if (event.results[current].isFinal && transcript.trim()) {
-            setTimeout(() => {
-              // Crear mensaje de usuario
-              const userMessage: Message = {
-                id: Date.now(),
-                text: transcript.trim(),
-                sender: "user",
-                timestamp: new Date(),
-              };
-
-              setMessages((prev) => [...prev, userMessage]);
-              setInputMessage(""); // Limpiar input
-              setError(null);
-
-              // Generar respuesta de IA
-              generateAIResponse(transcript.trim());
-            }, 300);
-          }
-        };
-
-        // Evento cuando termina el reconocimiento
-        recognitionInstance.onend = () => {
-          setIsListening(false);
-          // No necesitamos auto-enviar aquí porque ya se maneja en onresult
-        };
-
-        // Evento de error
-        recognitionInstance.onerror = (event: SpeechRecognitionErrorEvent) => {
-          console.error('Error de reconocimiento de voz:', event.error);
-          setIsListening(false);
-          
-          let errorMessage = "Error en el reconocimiento de voz.";
-          switch (event.error) {
-            case 'network':
-              errorMessage = "Error de conexión. Verifica tu internet.";
-              break;
-            case 'not-allowed':
-              errorMessage = "Permiso de micrófono denegado. Habilítalo en la configuración.";
-              break;
-            case 'no-speech':
-              errorMessage = "No se detectó voz. Intenta de nuevo.";
-              break;
-            case 'audio-capture':
-              errorMessage = "No se pudo acceder al micrófono.";
-              break;
-          }
-          setError(errorMessage);
-        };
-
-        // Cuando inicia el reconocimiento
-        recognitionInstance.onstart = () => {
-          setIsListening(true);
-          setError(null);
-        };
-
-        setRecognition(recognitionInstance);
-      } else {
-        setSpeechSupported(false);
-        console.warn('Reconocimiento de voz no soportado en este navegador');
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Función para iniciar/detener reconocimiento de voz
-  const toggleListening = () => {
-    if (!recognition) return;
-
-    if (isListening) {
-      recognition.stop();
-    } else {
-      // Limpiar mensaje anterior y empezar a escuchar
-      setInputMessage("");
-      recognition.start();
-    }
-  };
 
   const generateAIResponse = async (userMessage: string): Promise<void> => {
     setIsLoading(true);
@@ -416,7 +362,7 @@ export default function AIChat() {
               className="w-full bg-white/10 backdrop-blur-md text-white placeholder-gray-300 rounded-xl px-4 py-3 pr-20 border border-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
               disabled={isLoading || isListening}
             />
-            <Search className="absolute right-12 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute right-6 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           </div>
           
           {/* Botón de micrófono */}
