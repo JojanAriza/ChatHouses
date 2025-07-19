@@ -2,12 +2,11 @@ import React from 'react';
 import { Home, Bed, Bath, Car, MapPin, Wifi, Building2, Star, ArrowUp, Monitor } from 'lucide-react';
 import type { Casa, HouseCardProps } from '../types';
 
-
 // Type for values that can be validated
 type ValidatableValue = string | number | boolean | null | undefined;
 
 const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
-  const { casa, score } = match;
+  const { casa, score, matches, partialMatches } = match;
 
   // Función para formatear el nombre de la casa
   const getHouseName = (casa: Casa): string => {
@@ -17,43 +16,27 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
     return `Propiedad #${casa.OBJECTID}`;
   };
 
-  // Función para normalizar el score a un rango de 0-1
-  const normalizeScore = (score: number): number => {
-    // Si el score ya está entre 0 y 1, devolverlo tal como está
-    if (score >= 0 && score <= 1) {
-      return score;
-    }
-    
-    // Si el score es mayor a 1, normalizarlo
-    // Asumimos que scores típicos pueden estar entre 0 y 10
-    // pero ajustamos dinámicamente basado en el valor recibido
-    const maxExpectedScore = Math.max(10, score);
-    const normalizedScore = Math.min(score / maxExpectedScore, 1);
-    
-    return normalizedScore;
-  };
-
-  // Función para obtener el color del score
-  const getScoreColor = (normalizedScore: number): string => {
-    if (normalizedScore >= 0.8) return 'bg-green-500/20 text-green-300 border-green-500/20';
-    if (normalizedScore >= 0.6) return 'bg-blue-500/20 text-blue-300 border-blue-500/20';
-    if (normalizedScore >= 0.4) return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/20';
+  // Función para obtener el color del score (basado en el sistema de scoring de la API)
+  const getScoreColor = (score: number): string => {
+    if (score >= 90) return 'bg-green-500/20 text-green-300 border-green-500/20';
+    if (score >= 80) return 'bg-blue-500/20 text-blue-300 border-blue-500/20';
+    if (score >= 70) return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/20';
     return 'bg-red-500/20 text-red-300 border-red-500/20';
   };
 
   // Función para obtener el texto descriptivo del score
-  const getScoreText = (normalizedScore: number): string => {
-    if (normalizedScore >= 0.8) return 'Excelente';
-    if (normalizedScore >= 0.6) return 'Bueno';
-    if (normalizedScore >= 0.4) return 'Regular';
-    return 'Básico';
+  const getScoreText = (score: number): string => {
+    if (score >= 90) return 'Excelente';
+    if (score >= 80) return 'Muy bueno';
+    if (score >= 70) return 'Bueno';
+    return 'Regular';
   };
 
-  // Función para verificar si un valor es válido (no es 0, '0', null, undefined, o string vacío)
+  // Función para verificar si un valor es válido (maneja específicamente valores de ArcGIS)
   const isValidValue = (value: ValidatableValue): boolean => {
     if (value === null || value === undefined) return false;
-    if (typeof value === 'string') return value.trim() !== '' && value !== '0';
-    if (typeof value === 'number') return value > 0;
+    if (typeof value === 'string') return value.trim() !== '' && value !== '0' && value.toLowerCase() !== 'n/a';
+    if (typeof value === 'number') return value > 0 && !isNaN(value);
     return Boolean(value);
   };
 
@@ -77,8 +60,26 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
     return `${area} m²`;
   };
 
-  // Normalizar el score para la visualización
-  const normalizedScore = normalizeScore(score);
+  // Función para formatear tiempo de proximidad
+  const formatProximityTime = (minutes: number | null | undefined): string => {
+    if (!isValidValue(minutes)) return 'N/A';
+    if (minutes === 0) return 'Inmediato';
+    if (minutes === 1) return '1 min';
+    return `${minutes} min`;
+  };
+
+  // Función para convertir valores binarios de ArcGIS (1/0) a booleanos
+  const convertToBoolean = (value: number | null | undefined): boolean => {
+    return value === 1;
+  };
+
+  // Obtener valores booleanos desde los datos de ArcGIS
+  const hasGarage = convertToBoolean(casa.Garage);
+  const hasInternet = convertToBoolean(casa.Internet);
+  const isAmoblada = convertToBoolean(casa.Amoblada);
+  const hasBalcon = convertToBoolean(casa.Balcon);
+  const hasAsensor = convertToBoolean(casa.Asensor);
+  const hasTelevision = convertToBoolean(casa.Television);
 
   return (
     <div
@@ -108,12 +109,12 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
         </div>
         
         <div className="flex flex-col items-end space-y-1">
-          <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium border ${getScoreColor(normalizedScore)}`}>
+          <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium border ${getScoreColor(score)}`}>
             <Star className="w-3 h-3" />
-            <span>{Math.round(normalizedScore * 100)}%</span>
+            <span>{Math.round(score)}%</span>
           </div>
           <div className="text-xs text-gray-400">
-            {getScoreText(normalizedScore)}
+            {getScoreText(score)}
           </div>
         </div>
       </div>
@@ -126,10 +127,10 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           </div>
           <div>
             <span className="text-sm font-medium text-white">
-              {isValidValue(casa.Piezas) ? casa.Piezas : 'No especificado'}
+              {displayValue(casa.Piezas, '0')}
             </span>
             <span className="text-xs text-gray-400 block">
-              {isValidValue(casa.Piezas) ? (casa.Piezas === 1 ? 'pieza' : 'piezas') : 'piezas'}
+              {casa.Piezas === 1 ? 'habitación' : 'habitaciones'}
             </span>
           </div>
         </div>
@@ -140,10 +141,10 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           </div>
           <div>
             <span className="text-sm font-medium text-white">
-              {isValidValue(casa.Banos) ? casa.Banos : 'No especificado'}
+              {displayValue(casa.Banos, '0')}
             </span>
             <span className="text-xs text-gray-400 block">
-              {isValidValue(casa.Banos) ? (casa.Banos === 1 ? 'baño' : 'baños') : 'baños'}
+              {casa.Banos === 1 ? 'baño' : 'baños'}
             </span>
           </div>
         </div>
@@ -154,7 +155,7 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           </div>
           <div>
             <span className="text-sm font-medium text-white">
-              {casa.Garage ? 'Sí' : 'No'}
+              {hasGarage ? 'Sí' : 'No'}
             </span>
             <span className="text-xs text-gray-400 block">garage</span>
           </div>
@@ -166,10 +167,10 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           </div>
           <div>
             <span className="text-sm font-medium text-white">
-              {isValidValue(casa.Pisos) ? casa.Pisos : 'No especificado'}
+              {displayValue(casa.Pisos, '0')}
             </span>
             <span className="text-xs text-gray-400 block">
-              {isValidValue(casa.Pisos) ? (casa.Pisos === 1 ? 'piso' : 'pisos') : 'pisos'}
+              {casa.Pisos === 1 ? 'piso' : 'pisos'}
             </span>
           </div>
         </div>
@@ -178,38 +179,38 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
       {/* Características adicionales */}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
-          casa.Amoblada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-500/20 text-gray-400'
+          isAmoblada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-500/20 text-gray-400'
         }`}>
-          <div className={`w-2 h-2 rounded-full ${casa.Amoblada ? 'bg-emerald-400' : 'bg-gray-400'}`}></div>
-          <span>{casa.Amoblada ? 'Amoblada' : 'Sin amoblar'}</span>
+          <div className={`w-2 h-2 rounded-full ${isAmoblada ? 'bg-emerald-400' : 'bg-gray-400'}`}></div>
+          <span>{isAmoblada ? 'Amoblada' : 'Sin amoblar'}</span>
         </div>
         
         <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
-          casa.Balcon ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-500/20 text-gray-400'
+          hasBalcon ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-500/20 text-gray-400'
         }`}>
-          <div className={`w-2 h-2 rounded-full ${casa.Balcon ? 'bg-blue-400' : 'bg-gray-400'}`}></div>
-          <span>{casa.Balcon ? 'Balcón' : 'Sin balcón'}</span>
+          <div className={`w-2 h-2 rounded-full ${hasBalcon ? 'bg-blue-400' : 'bg-gray-400'}`}></div>
+          <span>{hasBalcon ? 'Balcón' : 'Sin balcón'}</span>
         </div>
         
         <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
-          casa.Internet ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-500/20 text-gray-400'
+          hasInternet ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-500/20 text-gray-400'
         }`}>
           <Wifi className="w-3 h-3" />
-          <span>{casa.Internet ? 'Internet' : 'Sin internet'}</span>
+          <span>{hasInternet ? 'Internet' : 'Sin internet'}</span>
         </div>
 
         <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
-          casa.Asensor ? 'bg-indigo-500/20 text-indigo-300' : 'bg-gray-500/20 text-gray-400'
+          hasAsensor ? 'bg-indigo-500/20 text-indigo-300' : 'bg-gray-500/20 text-gray-400'
         }`}>
           <ArrowUp className="w-3 h-3" />
-          <span>{casa.Asensor ? 'Ascensor' : 'Sin ascensor'}</span>
+          <span>{hasAsensor ? 'Ascensor' : 'Sin ascensor'}</span>
         </div>
 
         <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs ${
-          casa.Television ? 'bg-pink-500/20 text-pink-300' : 'bg-gray-500/20 text-gray-400'
+          hasTelevision ? 'bg-pink-500/20 text-pink-300' : 'bg-gray-500/20 text-gray-400'
         }`}>
           <Monitor className="w-3 h-3" />
-          <span>{casa.Television ? 'TV' : 'Sin TV'}</span>
+          <span>{hasTelevision ? 'TV' : 'Sin TV'}</span>
         </div>
       </div>
 
@@ -219,28 +220,61 @@ const HouseCard: React.FC<HouseCardProps> = ({ match, onHouseClick }) => {
           <div className="space-y-1">
             <div className="text-gray-400">
               <span className="text-blue-300 font-medium">🏥 Hospital:</span>
-              <div>{displayValue(casa.Hospital_Car, 'N/A')} min (carro)</div>
+              <div>{formatProximityTime(casa.Hospital_Car)} (carro)</div>
+              <div className="text-gray-500">{formatProximityTime(casa.Hospital_foot)} (caminando)</div>
             </div>
             <div className="text-gray-400">
               <span className="text-green-300 font-medium">🏫 Escuela:</span>
-              <div>{displayValue(casa.Escuelas_Car, 'N/A')} min (carro)</div>
+              <div>{formatProximityTime(casa.Escuelas_Car)} (carro)</div>
+              <div className="text-gray-500">{formatProximityTime(casa.Escuelas_foot)} (caminando)</div>
             </div>
           </div>
           <div className="space-y-1">
             <div className="text-gray-400">
               <span className="text-emerald-300 font-medium">🌳 Parque:</span>
-              <div>{displayValue(casa.Parques_Car, 'N/A')} min (carro)</div>
+              <div>{formatProximityTime(casa.Parques_Car)} (carro)</div>
+              <div className="text-gray-500">{formatProximityTime(casa.Parques_foot)} (caminando)</div>
             </div>
             <div className="text-gray-400">
               <span className="text-purple-300 font-medium">🎓 Universidad:</span>
-              <div>{displayValue(casa.Universidades_Car, 'N/A')} min (carro)</div>
+              <div>{formatProximityTime(casa.Universidades_Car)} (carro)</div>
+              <div className="text-gray-500">{formatProximityTime(casa.Universidades_foot)} (caminando)</div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Mostrar coincidencias exactas y parciales */}
+      {(matches.length > 0 || partialMatches.length > 0) && (
+        <div className="border-t border-blue-500/20 pt-3 mt-3">
+          {matches.length > 0 && (
+            <div className="mb-2">
+              <div className="flex items-center space-x-1 mb-1">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span className="text-xs text-green-300 font-medium">Coincidencias exactas:</span>
+              </div>
+              <div className="text-xs text-gray-300 pl-3">
+                {matches.join(', ')}
+              </div>
+            </div>
+          )}
+          
+          {partialMatches.length > 0 && (
+            <div>
+              <div className="flex items-center space-x-1 mb-1">
+                <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                <span className="text-xs text-yellow-300 font-medium">Coincidencias parciales:</span>
+              </div>
+              <div className="text-xs text-gray-300 pl-3">
+                {partialMatches.join(', ')}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Información de contacto */}
-      {casa.Telefono && (
+      {isValidValue(casa.Telefono) && (
         <div className="border-t border-blue-500/20 pt-3 mt-3">
           <div className="text-xs text-gray-400">
             <span className="text-blue-300 font-medium">📞 Contacto:</span>

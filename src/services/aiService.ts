@@ -1,12 +1,11 @@
-import { streamText } from 'ai';
-import { openrouter } from '../lib/ai';
-import { searchCasas, extractCriteriaFromText, formatCasasResults } from './arcGisApi';
-import type { AIServiceConfig, ChatMessage, SearchCriteria } from '../types';
-
+import { streamText } from "ai";
+import { openrouter } from "../lib/ai";
+import type { AIServiceConfig, ChatMessage } from "../types";
+import { HouseSearchService } from "./HouseSearchService";
 
 class AIService {
   private defaultConfig: AIServiceConfig = {
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
+    model: "meta-llama/llama-3.3-70b-instruct:free",
     temperature: 0.7,
     systemPrompt: `Eres un asistente de IA especializado en ayudar a las personas a encontrar casas en Bogotá, Colombia. 
     Tienes acceso a una base de datos completa de propiedades con información detallada y específica.
@@ -96,33 +95,13 @@ class AIService {
     **CUANDO NO ES SOBRE CASAS:**
     Si la consulta no es sobre búsqueda de propiedades, responde normalmente como un asistente útil, pero siempre ofrece ayuda para encontrar casas si es relevante.
     
-    Recuerda: Tu especialidad es conectar a las personas con las propiedades perfectas usando datos precisos y búsquedas inteligentes.`
+    Recuerda: Tu especialidad es conectar a las personas con las propiedades perfectas usando datos precisos y búsquedas inteligentes.`,
   };
 
-  private async shouldSearchCasas(text: string): Promise<boolean> {
-    const lowerText = text.toLowerCase();
-    const houseKeywords = [
-      'casa', 'casas', 'vivienda', 'hogar', 'apartamento', 'propiedad', 'inmueble',
-      'habitación', 'habitaciones', 'cuarto', 'cuartos', 'dormitorio', 'dormitorios', 'piezas',
-      'baño', 'baños', 'garage', 'balcón', 'amoblada', 'amueblada', 'ascensor',
-      'busco', 'necesito', 'quiero', 'me interesa', 'mostrar', 'encontrar', 'hay',
-      'precio', 'pesos', 'millones', 'alquiler', 'arriendo', 'venta',
-      'cerca', 'hospital', 'escuela', 'universidad', 'parque', 'colegio',
-      'internet', 'televisión', 'tv', 'pisos', 'área', 'metros', 'm2', 'm²'
-    ];
-    
-    const searchPatterns = [
-      /\d+\s*(habitaciones?|cuartos?|dormitorios?|piezas?)/,
-      /\d+\s*(baños?|baño)/,
-      /\d+\s*(pisos?|piso)/,
-      /\d+\s*(m2|metros|m²)/,
-      /\$?\d+(?:\.\d{3})*(?:,\d{3})*/,
-      /(con|sin)\s+(garage|internet|balcón|ascensor|televisión)/,
-      /cerca\s+(del?|de)\s+(hospital|escuela|universidad|parque)/
-    ];
-    
-    return houseKeywords.some(keyword => lowerText.includes(keyword)) || 
-           searchPatterns.some(pattern => pattern.test(lowerText));
+  private houseSearchService: HouseSearchService;
+
+  constructor() {
+    this.houseSearchService = new HouseSearchService();
   }
 
   async generateResponse(
@@ -130,116 +109,73 @@ class AIService {
     config: Partial<AIServiceConfig> = {}
   ) {
     const finalConfig = { ...this.defaultConfig, ...config };
-    
+
     // Obtener el último mensaje del usuario
     const lastUserMessage = messages
-      .filter(msg => msg.sender === 'user')
+      .filter((msg) => msg.sender === "user")
       .slice(-1)[0];
-    
-    let responseText = '';
-    
+
     // Si el último mensaje parece ser sobre búsqueda de casas
-    if (lastUserMessage && await this.shouldSearchCasas(lastUserMessage.text)) {
-      try {
-        // Extraer criterios de búsqueda
-        const criteria = extractCriteriaFromText(lastUserMessage.text);
-        
-        // Solo buscar si hay al menos un criterio
-        if (Object.keys(criteria).length > 0) {
-          const matches = await searchCasas(criteria);
-          responseText = formatCasasResults(matches);
-          
-          // Si no hay resultados, hacer una búsqueda más amplia
-          if (matches.length === 0) {
-            // Intentar búsqueda más flexible removiendo algunos criterios
-            const flexibleCriteria: SearchCriteria = {};
-            if (criteria.piezas) flexibleCriteria.piezas = criteria.piezas;
-            if (criteria.banos) flexibleCriteria.banos = criteria.banos;
-            if (criteria.garage !== undefined) flexibleCriteria.garage = criteria.garage;
-            if (criteria.nearHospital) flexibleCriteria.nearHospital = criteria.nearHospital;
-            if (criteria.nearSchool) flexibleCriteria.nearSchool = criteria.nearSchool;
-            
-            const flexibleMatches = await searchCasas(flexibleCriteria);
-            if (flexibleMatches.length > 0) {
-              responseText = `No encontré casas que coincidan exactamente con todos tus criterios, pero aquí tienes algunas opciones similares que podrían interesarte:\n\n`;
-              responseText += formatCasasResults(flexibleMatches);
-            } else {
-              responseText = `No encontré casas que coincidan con tus criterios. Te sugiero:\n\n`;
-              responseText += `• Ampliar el rango de precio\n`;
-              responseText += `• Considerar propiedades con características similares\n`;
-              responseText += `• Buscar en zonas con buena conectividad\n\n`;
-              responseText += `¿Te gustaría ajustar algún criterio específico?`;
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error al buscar casas:', error);
-        responseText = 'Hubo un problema al buscar casas en la base de datos. ¿Podrías intentar reformular tu consulta con más detalles específicos?';
+    if (
+      lastUserMessage &&
+      (await this.houseSearchService.shouldSearchCasas(lastUserMessage.text))
+    ) {
+      const responseText = await this.houseSearchService.handleHouseSearch(
+        lastUserMessage.text
+      );
+
+      if (responseText) {
+        return this.createMockStream(responseText);
       }
     }
-    
+
     // Convertir mensajes al formato requerido por la API
-    const apiMessages = messages.map(msg => ({
-      role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
-      content: msg.text
+    const apiMessages = messages.map((msg) => ({
+      role: msg.sender === "user" ? ("user" as const) : ("assistant" as const),
+      content: msg.text,
     }));
-    
-    // Si tenemos resultados de casas, incluirlos en el contexto
-    if (responseText) {
-      apiMessages.push({
-        role: 'assistant' as const,
-        content: responseText
-      });
-    }
-    
+
+    // Si no hay resultados de casas, usar el LLM normal
     try {
       const result = await streamText({
         model: openrouter(finalConfig.model!),
         messages: apiMessages,
         system: finalConfig.systemPrompt,
         temperature: finalConfig.temperature,
-        maxTokens: 1200, // Aumentado para respuestas más completas
+        maxTokens: 1200,
       });
+
+      return result.textStream;
+    } catch (error) {
+      console.error("Error generando respuesta de IA:", error);
+      throw new Error("Error al comunicarse con el servicio de IA");
+    }
+  }
+
+  private async *createMockStream(text: string) {
+    const words = text.split(" ");
+    for (let i = 0; i < words.length; i += 3) {
+      const chunk = words.slice(i, i + 3).join(" ") + " ";
+      yield chunk;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  async generateSimpleResponse(
+    prompt: string,
+    config: Partial<AIServiceConfig> = {}
+  ) {
+    const finalConfig = { ...this.defaultConfig, ...config };
+
+    // Verificar si es una consulta sobre casas
+    if (await this.houseSearchService.shouldSearchCasas(prompt)) {
+      const responseText = await this.houseSearchService.handleHouseSearch(prompt);
       
-      // Si ya tenemos resultados de casas, devolver esos resultados
       if (responseText) {
         return this.createMockStream(responseText);
       }
-      
-      return result.textStream;
-    } catch (error) {
-      console.error('Error generando respuesta de IA:', error);
-      throw new Error('Error al comunicarse con el servicio de IA');
     }
-  }
 
-  private async* createMockStream(text: string) {
-    const words = text.split(' ');
-    for (let i = 0; i < words.length; i += 3) {
-      const chunk = words.slice(i, i + 3).join(' ') + ' ';
-      yield chunk;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-  }
-
-  async generateSimpleResponse(prompt: string, config: Partial<AIServiceConfig> = {}) {
-    const finalConfig = { ...this.defaultConfig, ...config };
-    
-    // Verificar si es una consulta sobre casas
-    if (await this.shouldSearchCasas(prompt)) {
-      try {
-        const criteria = extractCriteriaFromText(prompt);
-        
-        if (Object.keys(criteria).length > 0) {
-          const matches = await searchCasas(criteria);
-          const responseText = formatCasasResults(matches);
-          return this.createMockStream(responseText);
-        }
-      } catch (error) {
-        console.error('Error al buscar casas:', error);
-      }
-    }
-    
     try {
       const result = await streamText({
         model: openrouter(finalConfig.model!),
@@ -248,12 +184,17 @@ class AIService {
         temperature: finalConfig.temperature,
         maxTokens: 1200,
       });
-      
+
       return result.textStream;
     } catch (error) {
-      console.error('Error generando respuesta simple:', error);
-      throw new Error('Error al comunicarse con el servicio de IA');
+      console.error("Error generando respuesta simple:", error);
+      throw new Error("Error al comunicarse con el servicio de IA");
     }
+  }
+
+  // Método para limpiar el historial de búsqueda (útil para reiniciar)
+  clearSearchHistory() {
+    this.houseSearchService.clearSearchHistory();
   }
 }
 

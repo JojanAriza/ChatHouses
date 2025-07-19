@@ -1,15 +1,25 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Loader2, Search } from "lucide-react";
 import aiService from "../services/aiService";
-import { searchCasas, extractCriteriaFromText } from "../services/arcGisApi";
 import MapModal from "../components/Map";
 import HouseResultsContainer from "../components/HouseResults";
-import type { Casa, ChatMessage as AIChatMessage, Message, } from "../types";
+import type { Casa, Message, SearchCriteria } from "../types";
 import HouseDetailsModal from "../components/HouseDetailsModal";
 import Header from "../components/Header";
 import ErrorMessage from "../components/ErrorMessage";
 import Loading from "../components/Loading";
 import QuickSearch from "../components/QuickSearch";
+import { searchCasas } from "../services/casaSearch";
+
+// Importar las funciones extraídas
+import {
+  isHouseQuery,
+  isFollowUpQuery,
+  extractCriteriaFromFollowUp,
+  formatCriteriaText,
+} from "../utils/criteriaExtractor";
+import { generateRefinementText } from "../utils/responseGenerator";
+import { convertToMessages, processAIStream } from "../utils/messageUtils";
 
 export default function AIChat() {
   const [messages, setMessages] = useState<Message[]>([
@@ -26,6 +36,9 @@ export default function AIChat() {
   const [selectedCasa, setSelectedCasa] = useState<Casa | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState<boolean>(false);
+  // Estado para mantener los criterios de la última búsqueda
+  const [lastSearchCriteria, setLastSearchCriteria] =
+    useState<SearchCriteria | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -37,79 +50,6 @@ export default function AIChat() {
     scrollToBottom();
   }, [messages]);
 
-  const isHouseQuery = (text: string): boolean => {
-    const lowerText = text.toLowerCase();
-    const houseKeywords = [
-      "casa",
-      "casas",
-      "vivienda",
-      "hogar",
-      "apartamento",
-      "propiedad",
-      "piezas",
-      "pieza",
-      "cuarto",
-      "cuartos",
-      "habitación",
-      "habitaciones",
-      "baño",
-      "baños",
-      "garage",
-      "balcón",
-      "amoblada",
-      "amueblada",
-      "busco",
-      "necesito",
-      "quiero",
-      "me interesa",
-      "mostrar",
-      "encontrar",
-    ];
-
-    return houseKeywords.some((keyword) => lowerText.includes(keyword));
-  };
-
-  // Función para convertir el mensaje a formato ChatMessage
-  const convertToMessages = (userMessage: string): AIChatMessage[] => {
-    const conversationHistory: AIChatMessage[] = messages.map((msg) => ({
-      id: msg.id,
-      text: msg.text,
-      sender: msg.sender,
-      timestamp: msg.timestamp,
-    }));
-
-    // Agregar el mensaje actual del usuario
-    conversationHistory.push({
-      id: Date.now(),
-      text: userMessage,
-      sender: "user",
-      timestamp: new Date(),
-    });
-
-    return conversationHistory;
-  };
-
-  // Función para procesar el stream de respuesta de IA
-  const processAIStream = async (
-    aiResponseStream:
-      | AsyncGenerator<string, void, unknown>
-      | AsyncIterable<string>
-  ): Promise<string> => {
-    let fullResponse = "";
-
-    // Verificar si es un AsyncGenerator o AsyncIterable
-    if (Symbol.asyncIterator in aiResponseStream) {
-      for await (const chunk of aiResponseStream) {
-        fullResponse += chunk;
-      }
-    } else {
-      // Si no es un AsyncGenerator, intentar convertirlo a string
-      fullResponse = String(aiResponseStream);
-    }
-
-    return fullResponse;
-  };
-
   const generateAIResponse = async (userMessage: string): Promise<void> => {
     setIsLoading(true);
     setError(null);
@@ -117,33 +57,104 @@ export default function AIChat() {
     try {
       // Verificar si es una consulta sobre casas
       if (isHouseQuery(userMessage)) {
-        const criteria = extractCriteriaFromText(userMessage);
+        console.log("🏠 Detectada consulta sobre casas");
+        console.log("📋 Criterios anteriores:", lastSearchCriteria);
 
-        if (Object.keys(criteria).length > 0) {
-          // Buscar casas que coincidan
+        // Determinar si es una consulta de seguimiento o una nueva búsqueda
+        const isFollowUp = isFollowUpQuery(userMessage, lastSearchCriteria !== null);
+        console.log("🔄 Es seguimiento:", isFollowUp);
+
+        // Guardar referencia a criterios previos ANTES de actualizar
+        const previousCriteria = lastSearchCriteria;
+
+        // Usar función híbrida que combina extracción local + API
+        const criteria = extractCriteriaFromFollowUp(
+          userMessage,
+          lastSearchCriteria
+        );
+        console.log("🎯 Criterios finales:", criteria);
+
+        // CRUCIAL: Asegurar que siempre haya al menos un criterio para búsquedas de casas
+        const hasAnyCriteria = Object.keys(criteria).length > 0;
+        console.log("📊 Tiene criterios:", hasAnyCriteria);
+
+        if (hasAnyCriteria || isHouseQuery(userMessage)) {
+          // Actualizar los criterios de la última búsqueda
+          setLastSearchCriteria(criteria);
+
+          console.log("🔍 Iniciando búsqueda con criterios:", criteria);
           const matches = await searchCasas(criteria);
+          console.log("🏘️ Casas encontradas:", matches.length);
+
+          // Debug específico para resultados de "amoblada"
+          if (criteria.amoblada !== undefined) {
+            console.log("🏠 DEBUG RESULTADOS AMOBLADA:");
+            console.log("  - Buscando amoblada:", criteria.amoblada);
+            console.log("  - Resultados encontrados:", matches.length);
+            if (matches.length > 0) {
+              console.log("  - Primera casa amoblada:", matches[0]?.casa.Amoblada);
+              console.log("  - Todas las casas amoblada:", matches.map(c => c.casa.Amoblada));
+            }
+          }
 
           // Crear mensaje con resultados
-          const responseText =
-            matches.length > 0
-              ? `Encontré ${matches.length} casa${
-                  matches.length > 1 ? "s" : ""
-                } que coinciden con tus criterios. Aquí están los resultados ordenados por relevancia:`
-              : "No encontré casas que coincidan exactamente con tus criterios. Te sugiero que pruebes con criterios más amplios.";
+          let responseText = "";
 
+          if (isFollowUp && previousCriteria) {
+            // Es un refinamiento de búsqueda - usar criterios anteriores vs nuevos
+            responseText = generateRefinementText(previousCriteria, criteria);
+          } else {
+            // Es una búsqueda nueva
+            responseText =
+              "Perfecto! Voy a buscar casas que coincidan con tus criterios.";
+          }
+
+          // Agregar información sobre los criterios y resultados
+          const criteriaText = formatCriteriaText(criteria);
+
+          if (matches.length > 0) {
+            responseText += `\n\nEncontré ${matches.length} casa${
+              matches.length > 1 ? "s" : ""
+            } que coinciden con tus criterios${isFollowUp ? " refinados" : ""}${
+              criteriaText ? ":\n\n" + criteriaText : ""
+            }\n\nAquí están los resultados ordenados por relevancia:`;
+          } else {
+            responseText += `\n\nNo encontré casas que coincidan exactamente con estos criterios${
+              isFollowUp ? " refinados" : ""
+            }${
+              criteriaText ? ":\n\n" + criteriaText : ""
+            }\n\nTe sugiero ajustar algunos filtros para ampliar la búsqueda.`;
+          }
+
+          // Crear el mensaje AI con los resultados SIEMPRE que haya casas
           const aiMessageId = Date.now() + Math.random();
+          
           const aiMessage: Message = {
             id: aiMessageId,
             text: responseText,
             sender: "ai",
             timestamp: new Date(),
-            houseResults: matches,
+            // CRUCIAL: Forzar que houseResults siempre esté presente si hay resultados
+            houseResults: matches.length > 0 ? [...matches] : undefined,
           };
 
-          setMessages((prev) => [...prev, aiMessage]);
+          console.log("📤 Enviando mensaje AI:");
+          console.log("  - ID:", aiMessage.id);
+          console.log("  - Texto:", aiMessage.text.substring(0, 100) + "...");
+          console.log("  - houseResults length:", aiMessage.houseResults?.length || 0);
+
+          // Usar callback para asegurar que el estado se actualiza correctamente
+          setMessages((prevMessages) => {
+            const newMessages = [...prevMessages, aiMessage];
+            console.log("📝 Estado actualizado. Total mensajes:", newMessages.length);
+            console.log("📝 Último mensaje houseResults length:", newMessages[newMessages.length - 1].houseResults?.length || 0);
+            return newMessages;
+          });
+
         } else {
           // No se pudieron extraer criterios, usar IA normal
-          const chatMessages = convertToMessages(userMessage);
+          console.log("❌ No se pudieron extraer criterios, usando IA normal");
+          const chatMessages = convertToMessages(userMessage, messages);
           const aiResponseStream = await aiService.generateResponse(
             chatMessages
           );
@@ -161,7 +172,8 @@ export default function AIChat() {
         }
       } else {
         // Consulta general, usar IA normal
-        const chatMessages = convertToMessages(userMessage);
+        console.log("💬 Consulta general, usando IA normal");
+        const chatMessages = convertToMessages(userMessage, messages);
         const aiResponseStream = await aiService.generateResponse(chatMessages);
         const text = await processAIStream(aiResponseStream);
 
@@ -192,7 +204,6 @@ export default function AIChat() {
     }
   };
 
-
   const handleQuickSearch = (searchText: string) => {
     setInputMessage(searchText);
   };
@@ -208,10 +219,11 @@ export default function AIChat() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = inputMessage; // Capturar antes de limpiar
     setInputMessage("");
     setError(null);
 
-    await generateAIResponse(inputMessage);
+    await generateAIResponse(currentInput);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -241,14 +253,12 @@ export default function AIChat() {
     setIsMapModalOpen(false);
     setSelectedCasa(null);
   };
-
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
-
-      <Header/>
+      <Header />
 
       {/* Quick Search Buttons */}
-      <QuickSearch handleQuickSearch = {handleQuickSearch}/>
+      <QuickSearch handleQuickSearch={handleQuickSearch} />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -278,8 +288,12 @@ export default function AIChat() {
                   <div className="whitespace-pre-wrap text-sm leading-relaxed">
                     {message.text}
                   </div>
+                  {/* Renderizado de resultados de casas */}
                   {message.houseResults && message.houseResults.length > 0 && (
                     <div className="mt-4">
+                      <div className="text-xs opacity-75 mb-2">
+                        🏠 Mostrando {message.houseResults.length} resultados
+                      </div>
                       <HouseResultsContainer
                         matches={message.houseResults}
                         onHouseClick={handleHouseClick}
@@ -299,7 +313,7 @@ export default function AIChat() {
         {isLoading && <Loading />}
 
         {/* Error message */}
-        {error && <ErrorMessage error={error}/>}
+        {error && <ErrorMessage error={error} />}
 
         <div ref={messagesEndRef} />
       </div>
