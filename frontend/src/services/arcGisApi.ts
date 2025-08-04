@@ -2,6 +2,7 @@ import { BathroomPatternExtractor } from "../patterns/bathroomPatterns";
 import { BooleanPatternExtractor } from "../patterns/booleanPatterns";
 import { GenericPatternExtractor } from "../patterns/genericPatterns";
 import { NumericPatternExtractor } from "../patterns/numericPatterns";
+import { PricePatternExtractor } from "../patterns/pricePatterns";
 import { ProximityPatternExtractor } from "../patterns/proximityPatternExtractor";
 import { RoomPatternExtractor } from "../patterns/roomPatterns";
 import type { SearchCriteria, CasaMatch } from "../types";
@@ -10,16 +11,20 @@ import type { SearchCriteria, CasaMatch } from "../types";
 export const extractCriteriaFromText = (text: string): SearchCriteria => {
   const criteria: SearchCriteria = {};
 
+  console.log('🔍 Extrayendo criterios del texto:', text);
+
   // Extraer habitaciones
   const piezas = RoomPatternExtractor.extract(text);
   if (piezas !== null) {
     criteria.piezas = piezas;
+    console.log('🏠 Habitaciones encontradas:', piezas);
   }
 
   // Extraer baños
   const banos = BathroomPatternExtractor.extract(text);
   if (banos !== null) {
     criteria.banos = banos;
+    console.log('🚿 Baños encontrados:', banos);
   }
 
   // Patrón genérico solo si no se encontró nada específico
@@ -37,6 +42,7 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
       if (value !== null) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (criteria as any)[property] = value;
+        console.log(`✅ ${property}:`, value);
       }
     }
   }
@@ -45,30 +51,38 @@ export const extractCriteriaFromText = (text: string): SearchCriteria => {
   const pisos = NumericPatternExtractor.extractFloors(text);
   if (pisos !== null) {
     criteria.pisos = pisos;
+    console.log('🏢 Pisos encontrados:', pisos);
   }
 
   const area = NumericPatternExtractor.extractArea(text);
   if (area !== null) {
     criteria.area = area;
+    console.log('📐 Área encontrada:', area);
   }
 
-  const priceRange = NumericPatternExtractor.extractPriceRange(text);
+  // ✅ USAR EL NUEVO EXTRACTOR DE PRECIOS
+  const priceRange = PricePatternExtractor.extractPriceRange(text);
   if (priceRange.min !== undefined) {
     criteria.precioMin = priceRange.min;
+    console.log('💰 Precio mínimo:', priceRange.min);
   }
   if (priceRange.max !== undefined) {
     criteria.precioMax = priceRange.max;
+    console.log('💰 Precio máximo:', priceRange.max);
   }
 
   // ✅ Extraer proximidades usando el extractor modular
   const proximities = ProximityPatternExtractor.extractProximities(text);
   Object.assign(criteria, proximities);
+  if (Object.keys(proximities).length > 0) {
+    console.log('📍 Proximidades encontradas:', proximities);
+  }
 
-
+  console.log('📋 Criterios finales extraídos:', criteria);
   return criteria;
 };
 
-// Función para formatear resultados para mostrar al usuario
+// El resto de la función formatCasasResults permanece igual
 export const formatCasasResults = (matches: CasaMatch[]): string => {
   if (matches.length === 0) {
     return "No se encontraron casas que coincidan con tus criterios en un 70% o más. Te sugiero ajustar algunos criterios para obtener mejores resultados.";

@@ -508,45 +508,79 @@ export const extractCriteriaLocallyImproved = (
   return criteria;
 };
 
+
 export const formatCriteriaText = (criteria: SearchCriteria): string => {
   const parts: string[] = [];
 
-  if (criteria.piezas) parts.push(`${criteria.piezas} habitaciones`);
-  if (criteria.banos) parts.push(`${criteria.banos} baños`);
-  if (criteria.pisos) parts.push(`${criteria.pisos} pisos`);
-  if (criteria.area) parts.push(`${criteria.area} m²`);
-  if (criteria.precioMin && criteria.precioMax) {
-    parts.push(
-      `Precio: ${criteria.precioMin.toLocaleString()} - ${criteria.precioMax.toLocaleString()}`
-    );
-  } else if (criteria.precioMin) {
-    parts.push(`Precio mínimo: ${criteria.precioMin.toLocaleString()}`);
-  } else if (criteria.precioMax) {
-    parts.push(`Precio máximo: ${criteria.precioMax.toLocaleString()}`);
+  // Información básica
+  if (criteria.piezas) {
+    parts.push(`🏠 ${criteria.piezas} habitación${criteria.piezas > 1 ? 'es' : ''}`);
+  }
+  
+  if (criteria.banos) {
+    parts.push(`🚿 ${criteria.banos} baño${criteria.banos > 1 ? 's' : ''}`);
   }
 
-  if (criteria.garage === true) parts.push("Con garage");
-  if (criteria.garage === false) parts.push("Sin garage");
-  if (criteria.internet === true) parts.push("Con internet");
-  if (criteria.internet === false) parts.push("Sin internet");
-  
-  // Mejorar display de "amoblada"
-  if (criteria.amoblada === true) parts.push("✅ Amoblada");
-  if (criteria.amoblada === false) parts.push("❌ Sin amoblar");
-  
-  if (criteria.balcon === true) parts.push("Con balcón");
-  if (criteria.balcon === false) parts.push("Sin balcón");
-  if (criteria.asensor === true) parts.push("Con ascensor");
-  if (criteria.asensor === false) parts.push("Sin ascensor");
-  if (criteria.television === true) parts.push("Con televisión");
-  if (criteria.television === false) parts.push("Sin televisión");
+  if (criteria.pisos) {
+    parts.push(`🏢 ${criteria.pisos} piso${criteria.pisos > 1 ? 's' : ''}`);
+  }
 
-  if (criteria.nearHospital) parts.push("Cerca de hospital");
-  if (criteria.nearSchool) parts.push("Cerca de escuela");
-  if (criteria.nearPark) parts.push("Cerca de parque");
-  if (criteria.nearUniversity) parts.push("Cerca de universidad");
+  if (criteria.area) {
+    parts.push(`📐 ${criteria.area} m²`);
+  }
 
-  return parts.length > 0
-    ? `📋 Criterios de búsqueda: ${parts.join(", ")}`
-    : "";
+  // ✅ PRECIO MEJORADO - Mostrar rangos correctamente
+  if (criteria.precioMin || criteria.precioMax) {
+    if (criteria.precioMin && criteria.precioMax) {
+      parts.push(`💰 Entre $${criteria.precioMin.toLocaleString()} y $${criteria.precioMax.toLocaleString()}`);
+    } else if (criteria.precioMin) {
+      parts.push(`💰 Desde $${criteria.precioMin.toLocaleString()}`);
+    } else if (criteria.precioMax) {
+      parts.push(`💰 Hasta $${criteria.precioMax.toLocaleString()}`);
+    }
+  }
+
+  // Características booleanas
+  if (criteria.garage !== undefined) {
+    parts.push(criteria.garage ? '🚗 Con garage' : '🚫 Sin garage');
+  }
+  
+  if (criteria.internet !== undefined) {
+    parts.push(criteria.internet ? '🌐 Con internet' : '🚫 Sin internet');
+  }
+  
+  if (criteria.amoblada !== undefined) {
+    parts.push(criteria.amoblada ? '🛋️ Amoblada' : '🚫 Sin amoblar');
+  }
+  
+  if (criteria.balcon !== undefined) {
+    parts.push(criteria.balcon ? '🌅 Con balcón' : '🚫 Sin balcón');
+  }
+  
+  if (criteria.asensor !== undefined) {
+    parts.push(criteria.asensor ? '🛗 Con ascensor' : '🚫 Sin ascensor');
+  }
+  
+  if (criteria.television !== undefined) {
+    parts.push(criteria.television ? '📺 Con TV' : '🚫 Sin TV');
+  }
+
+  // Proximidades
+  if (criteria.nearHospital) {
+    parts.push('🏥 Cerca de hospital');
+  }
+  
+  if (criteria.nearSchool) {
+    parts.push('🏫 Cerca de escuela');
+  }
+  
+  if (criteria.nearPark) {
+    parts.push('🌳 Cerca de parque');
+  }
+  
+  if (criteria.nearUniversity) {
+    parts.push('🎓 Cerca de universidad');
+  }
+
+  return parts.length > 0 ? parts.join('\n') : 'Criterios generales de búsqueda';
 };

@@ -256,3 +256,28 @@ declare global {
     webkitSpeechRecognition: SpeechRecognitionConstructor | undefined;
   }
 }
+
+// types.ts
+export interface Survey123EventData {
+  event: string;
+  contentHeight?: number;
+  [key: string]: unknown;
+}
+
+export interface Survey123ComponentProps {
+  surveyId?: string;
+  width?: string | number;
+  minHeight?: number;
+  onFormLoaded?: (data: Survey123EventData) => void;
+  title?: string;
+  showHeader?: boolean;
+  className?: string;
+}
+
+export interface ProcessingResult {
+  success: boolean;
+  message: string;
+  output?: string;
+  error?: string;
+  timestamp: string;
+}

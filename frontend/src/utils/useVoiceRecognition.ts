@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { SpeechRecognitionErrorEvent, SpeechRecognitionEvent, SpeechRecognitionInstance } from "../types";
 
 interface VoiceRecognitionConfig {
@@ -37,8 +37,12 @@ export const useVoiceRecognition = (
   const [transcript, setTranscript] = useState<string>('');
   const [recognition, setRecognition] = useState<SpeechRecognitionInstance | null>(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const finalConfig = { ...defaultConfig, ...config };
+
+const finalConfig = useMemo(() => ({
+  ...defaultConfig,
+  ...config,
+}), [config]);
+
 
   // Función para obtener mensaje de error amigable
   const getErrorMessage = (errorCode: string): string => {
@@ -56,62 +60,56 @@ export const useVoiceRecognition = (
   };
 
   // Inicializar reconocimiento de voz
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        setSpeechSupported(true);
-        const recognitionInstance = new SpeechRecognition();
-        
-        // Configuración del reconocimiento de voz
-        recognitionInstance.lang = finalConfig.language!;
-        recognitionInstance.continuous = finalConfig.continuous!;
-        recognitionInstance.interimResults = finalConfig.interimResults!;
-        recognitionInstance.maxAlternatives = finalConfig.maxAlternatives!;
+useEffect(() => {
+  if (typeof window === 'undefined' || recognition) return;
 
-        // Evento cuando se recibe resultado
-        recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
-          const current = event.resultIndex;
-          const transcriptResult = event.results[current][0].transcript;
-          
-          // Actualizar transcript con el texto transcrito
-          setTranscript(transcriptResult.trim());
-          
-          // Si es resultado final y hay callback, ejecutarlo después del delay
-          if (event.results[current].isFinal && transcriptResult.trim() && onFinalTranscript) {
-            setTimeout(() => {
-              onFinalTranscript(transcriptResult.trim());
-              setTranscript(''); // Limpiar transcript después de usar
-            }, finalConfig.autoSubmitDelay);
-          }
-        };
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-        // Evento cuando termina el reconocimiento
-        recognitionInstance.onend = () => {
-          setIsListening(false);
-        };
+  if (SpeechRecognition) {
+    setSpeechSupported(true);
+    const recognitionInstance = new SpeechRecognition();
 
-        // Evento de error
-        recognitionInstance.onerror = (event: SpeechRecognitionErrorEvent) => {
-          console.error('Error de reconocimiento de voz:', event.error);
-          setIsListening(false);
-          setError(getErrorMessage(event.error));
-        };
+    recognitionInstance.lang = finalConfig.language!;
+    recognitionInstance.continuous = finalConfig.continuous!;
+    recognitionInstance.interimResults = finalConfig.interimResults!;
+    recognitionInstance.maxAlternatives = finalConfig.maxAlternatives!;
 
-        // Cuando inicia el reconocimiento
-        recognitionInstance.onstart = () => {
-          setIsListening(true);
-          setError(null);
-        };
+    recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
+      const current = event.resultIndex;
+      const transcriptResult = event.results[current][0].transcript;
 
-        setRecognition(recognitionInstance);
-      } else {
-        setSpeechSupported(false);
-        console.warn('Reconocimiento de voz no soportado en este navegador');
+      setTranscript(transcriptResult.trim());
+
+      if (event.results[current].isFinal && transcriptResult.trim() && onFinalTranscript) {
+        setTimeout(() => {
+          onFinalTranscript(transcriptResult.trim());
+          setTranscript('');
+        }, finalConfig.autoSubmitDelay);
       }
-    }
-  }, [finalConfig, onFinalTranscript]);
+    };
+
+    recognitionInstance.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionInstance.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('Error de reconocimiento de voz:', event.error);
+      setIsListening(false);
+      setError(getErrorMessage(event.error));
+    };
+
+    recognitionInstance.onstart = () => {
+      setIsListening(true);
+      setError(null);
+    };
+
+    setRecognition(recognitionInstance);
+  } else {
+    setSpeechSupported(false);
+    console.warn('Reconocimiento de voz no soportado en este navegador');
+  }
+}, [finalConfig, recognition, onFinalTranscript]);
+
 
   // Función para iniciar/detener reconocimiento de voz
   const toggleListening = useCallback(() => {
